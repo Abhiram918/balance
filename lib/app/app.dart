@@ -98,6 +98,10 @@ class TrackerProvider extends InheritedNotifier<WindowsUsageTracker> {
   static WindowsUsageTracker of(BuildContext context) {
     return context.dependOnInheritedWidgetOfExactType<TrackerProvider>()!.notifier!;
   }
+
+  static WindowsUsageTracker? read(BuildContext context) {
+    return context.getInheritedWidgetOfExactType<TrackerProvider>()?.notifier;
+  }
 }
 
 class FocusProvider extends InheritedNotifier<FocusService> {

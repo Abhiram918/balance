@@ -46,7 +46,7 @@ void main() {
       extensions: [AppThemeColors.dark],
     );
 
-    Widget buildTestApp({UsageAnalyticsService? service}) {
+    Widget buildTestApp({UsageAnalyticsService? service, DateTime? referenceDate}) {
       return TrackerProvider(
         tracker: tracker,
         child: MaterialApp(
@@ -54,6 +54,7 @@ void main() {
           home: Scaffold(
             body: InsightsScreen(
               analyticsService: service ?? analyticsService,
+              referenceDate: referenceDate ?? refDate,
             ),
           ),
         ),
@@ -65,7 +66,7 @@ void main() {
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
-      // Insert real recorded sessions for Telegram and VS Code
+      // Insert real recorded sessions for Telegram and VS Code on refDate (Oct 14)
       await repository.insertSession(AppSession(
         appName: 'VS Code',
         exePath: r'C:\vscode.exe',
@@ -162,6 +163,80 @@ void main() {
 
       expect(find.text('Your 30-day digital trends and long-term usage patterns.'), findsOneWidget);
       expect(find.text('Daily Screen Time (Last 30 Days)'), findsOneWidget);
+    });
+
+    testWidgets('Regression: Background refresh does NOT hide the dashboard with loading spinner', (tester) async {
+      tester.view.physicalSize = const Size(1600, 1000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      await repository.insertSession(AppSession(
+        appName: 'VS Code',
+        exePath: r'C:\vscode.exe',
+        startTime: DateTime(2026, 10, 14, 9, 0),
+        endTime: DateTime(2026, 10, 14, 10, 0),
+      ));
+
+      await tester.pumpWidget(buildTestApp());
+      await tester.pumpAndSettle();
+
+      // Dashboard is now fully rendered
+      expect(find.text('7-Day Daily Average'), findsOneWidget);
+      expect(find.text('VS Code'), findsWidgets);
+      expect(find.text('Analyzing recorded usage...'), findsNothing);
+
+      // Simulate live tracker notification (the event that previously caused flickering)
+      tracker.notifyListeners();
+      await tester.pump(); // Pump frame immediately after notification
+
+      // The dashboard MUST remain visible and MUST NOT flicker back to loading state
+      expect(find.text('7-Day Daily Average'), findsOneWidget);
+      expect(find.text('VS Code'), findsWidgets);
+      expect(find.text('Analyzing recorded usage...'), findsNothing);
+
+      await tester.pumpAndSettle();
+      expect(find.text('7-Day Daily Average'), findsOneWidget);
+      expect(find.text('Analyzing recorded usage...'), findsNothing);
+    });
+
+    testWidgets('Regression: Repeated tracker notifications do not cause continuous loading flicker', (tester) async {
+      tester.view.physicalSize = const Size(1600, 1000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      await tester.pumpWidget(buildTestApp());
+      await tester.pumpAndSettle();
+
+      // Fire 10 consecutive tracker ticks (simulating 20 seconds of live tracking)
+      for (int i = 0; i < 10; i++) {
+        tracker.notifyListeners();
+        await tester.pump(const Duration(milliseconds: 100));
+        // Verify loading state is NEVER shown while dashboard is already loaded
+        expect(find.text('Analyzing recorded usage...'), findsNothing);
+      }
+
+      await tester.pumpAndSettle();
+      expect(find.text('Insights'), findsOneWidget);
+    });
+
+    testWidgets('Regression: Disposing screen cleans up tracker listeners without errors', (tester) async {
+      tester.view.physicalSize = const Size(1600, 1000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      await tester.pumpWidget(buildTestApp());
+      await tester.pumpAndSettle();
+
+      // Navigate away / replace with empty container (triggers dispose)
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(body: Text('Other Screen')),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Tracker notification after dispose should not throw or cause errors
+      expect(() => tracker.notifyListeners(), returnsNormally);
     });
   });
 }

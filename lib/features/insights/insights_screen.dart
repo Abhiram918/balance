@@ -8,14 +8,20 @@ import '../../app/theme/app_colors.dart';
 import '../../app/theme/app_spacing.dart';
 import '../../core/models/analytics_data.dart';
 import '../../core/services/usage_analytics_service.dart';
+import '../../core/services/windows_usage_tracker.dart';
 import '../../core/widgets/page_header.dart';
 
 /// Insights screen displaying real, data-driven analytics and trends
 /// derived directly from the SQLite database and live tracking.
 class InsightsScreen extends StatefulWidget {
   final UsageAnalyticsService? analyticsService;
+  final DateTime? referenceDate;
 
-  const InsightsScreen({super.key, this.analyticsService});
+  const InsightsScreen({
+    super.key,
+    this.analyticsService,
+    this.referenceDate,
+  });
 
   @override
   State<InsightsScreen> createState() => _InsightsScreenState();
@@ -25,14 +31,25 @@ class _InsightsScreenState extends State<InsightsScreen> {
   AnalyticsPeriod _selectedPeriod = AnalyticsPeriod.last7Days;
   PeriodAnalytics? _analytics;
   bool _isLoading = true;
+  bool _isFetching = false;
   String? _errorMessage;
 
   UsageAnalyticsService? _resolvedService;
+  WindowsUsageTracker? _tracker;
+  bool _isInitialized = false;
+  int _requestId = 0;
+  DateTime _lastRefreshTime = DateTime.fromMillisecondsSinceEpoch(0);
+
+  // Throttle live tracker updates to avoid excessive database queries
+  static const Duration _trackerUpdateThrottle = Duration(seconds: 15);
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _initServiceAndLoad();
+    if (!_isInitialized) {
+      _isInitialized = true;
+      _initServiceAndLoad();
+    }
   }
 
   void _initServiceAndLoad() {
@@ -40,11 +57,14 @@ class _InsightsScreenState extends State<InsightsScreen> {
       _resolvedService = widget.analyticsService;
     } else {
       try {
-        final tracker = TrackerProvider.of(context);
+        final tracker = TrackerProvider.read(context) ?? TrackerProvider.of(context);
+        _tracker = tracker;
         _resolvedService = UsageAnalyticsService(
           repository: tracker.repository,
           tracker: tracker,
         );
+
+        _tracker?.addListener(_onTrackerNotification);
       } catch (e) {
         _errorMessage = 'Could not access tracking service: $e';
         _isLoading = false;
@@ -52,32 +72,63 @@ class _InsightsScreenState extends State<InsightsScreen> {
       }
     }
 
-    _loadAnalytics();
+    _loadAnalytics(isInitial: true);
   }
 
-  Future<void> _loadAnalytics() async {
-    if (_resolvedService == null) return;
+  @override
+  void dispose() {
+    _tracker?.removeListener(_onTrackerNotification);
+    super.dispose();
+  }
 
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
+  void _onTrackerNotification() {
+    if (!mounted || _isFetching) return;
+    final now = DateTime.now();
+    if (now.difference(_lastRefreshTime) >= _trackerUpdateThrottle) {
+      _loadAnalytics(isInitial: false);
+    }
+  }
+
+  Future<void> _loadAnalytics({bool isInitial = false}) async {
+    if (_resolvedService == null || _isFetching) return;
+
+    _isFetching = true;
+    final currentRequestId = ++_requestId;
+
+    // Only show full loading state if we have no analytics loaded yet
+    if (isInitial && _analytics == null) {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
+    }
 
     try {
-      final data = await _resolvedService!.getAnalytics(period: _selectedPeriod);
-      if (mounted) {
-        setState(() {
-          _analytics = data;
-          _isLoading = false;
-        });
-      }
+      final data = await _resolvedService!.getAnalytics(
+        period: _selectedPeriod,
+        referenceDate: widget.referenceDate,
+      );
+
+      if (!mounted || currentRequestId != _requestId) return;
+
+      setState(() {
+        _analytics = data;
+        _isLoading = false;
+        _errorMessage = null;
+        _lastRefreshTime = DateTime.now();
+      });
     } catch (e) {
-      if (mounted) {
-        setState(() {
+      if (!mounted || currentRequestId != _requestId) return;
+
+      setState(() {
+        _isLoading = false;
+        // Only show error screen if we don't already have data to display
+        if (_analytics == null) {
           _errorMessage = 'Failed to load usage analytics: $e';
-          _isLoading = false;
-        });
-      }
+        }
+      });
+    } finally {
+      _isFetching = false;
     }
   }
 
@@ -106,9 +157,9 @@ class _InsightsScreenState extends State<InsightsScreen> {
               ],
             ),
             const SizedBox(height: AppSpacing.xl),
-            if (_isLoading)
+            if (_analytics == null && _isLoading)
               _buildLoadingState(colors)
-            else if (_errorMessage != null)
+            else if (_analytics == null && _errorMessage != null)
               _buildErrorState(colors, theme)
             else if (_analytics != null)
               _buildAnalyticsContent(context, colors, theme, _analytics!)
@@ -148,7 +199,7 @@ class _InsightsScreenState extends State<InsightsScreen> {
                 setState(() {
                   _selectedPeriod = period;
                 });
-                _loadAnalytics();
+                _loadAnalytics(isInitial: false);
               }
             },
             borderRadius: BorderRadius.circular(8),
