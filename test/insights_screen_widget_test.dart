@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:balance/app/app.dart';
 import 'package:balance/app/theme/app_colors.dart';
 import 'package:balance/core/models/analytics_data.dart';
+import 'package:balance/core/models/app_limit.dart';
 import 'package:balance/core/models/app_session.dart';
 import 'package:balance/core/models/focus_session.dart';
 import 'package:balance/core/services/usage_analytics_service.dart';
@@ -11,20 +11,80 @@ import 'package:balance/core/services/usage_repository.dart';
 import 'package:balance/core/services/windows_usage_tracker.dart';
 import 'package:balance/features/insights/insights_screen.dart';
 
+/// In-memory repository following the project's existing testing architecture
+/// (see test/limits_dialog_widget_test.dart) to execute reliably within Flutter's
+/// widget test FakeAsync event loop.
+class FakeUsageRepository extends UsageRepository {
+  final List<AppSession> sessions = [];
+  final List<FocusSessionRecord> focusSessions = [];
+  final List<AppLimit> limits = [];
+
+  FakeUsageRepository() : super(dbName: 'fake_insights_test.db');
+
+  @override
+  Future<AppSession> insertSession(AppSession session) async {
+    sessions.add(session);
+    return session;
+  }
+
+  @override
+  Future<List<AppSession>> getSessionsForRange(DateTime start, DateTime end) async {
+    return sessions.where((s) {
+      return s.startTime.isBefore(end) && s.endTime.isAfter(start);
+    }).toList();
+  }
+
+  @override
+  Future<List<FocusSessionRecord>> getFocusSessionsForRange(DateTime start, DateTime end) async {
+    return focusSessions.where((s) {
+      return s.startTime.isBefore(end) && s.endTime.isAfter(start);
+    }).toList();
+  }
+
+  @override
+  Future<FocusSessionRecord> insertFocusSession(FocusSessionRecord record) async {
+    focusSessions.add(record);
+    return record;
+  }
+
+  @override
+  Future<List<AppLimit>> getAllLimits() async {
+    return List.unmodifiable(limits);
+  }
+
+  @override
+  Future<void> close() async {}
+}
+
+class SpyUsageAnalyticsService extends UsageAnalyticsService {
+  int callCount = 0;
+  final UsageAnalyticsService _inner;
+
+  SpyUsageAnalyticsService(this._inner)
+      : super(repository: _inner.repository, tracker: _inner.tracker);
+
+  @override
+  Future<PeriodAnalytics> getAnalytics({
+    required AnalyticsPeriod period,
+    DateTime? referenceDate,
+  }) async {
+    callCount++;
+    return _inner.getAnalytics(period: period, referenceDate: referenceDate);
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  sqfliteFfiInit();
 
   group('InsightsScreen Widget Tests', () {
-    late UsageRepository repository;
+    late FakeUsageRepository repository;
     late WindowsUsageTracker tracker;
     late UsageAnalyticsService analyticsService;
 
     final refDate = DateTime(2026, 10, 14, 15, 0);
 
-    setUp(() async {
-      repository = UsageRepository(dbName: inMemoryDatabasePath);
-      await repository.database;
+    setUp(() {
+      repository = FakeUsageRepository();
 
       tracker = WindowsUsageTracker(
         repository: repository,
@@ -61,7 +121,7 @@ void main() {
       );
     }
 
-    testWidgets('Displays real data and replaces hardcoded placeholders', (tester) async {
+    testWidgets('Initial loading eventually displays the dashboard with real data', (tester) async {
       tester.view.physicalSize = const Size(1600, 1000);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() => tester.view.resetPhysicalSize());
@@ -91,7 +151,12 @@ void main() {
       ));
 
       await tester.pumpWidget(buildTestApp());
-      await tester.pumpAndSettle();
+      // Initial state is loading
+      expect(find.text('Analyzing recorded usage...'), findsOneWidget);
+
+      // Settle loading future and chart animations
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 200));
 
       // Verify Header
       expect(find.text('Insights'), findsOneWidget);
@@ -126,7 +191,8 @@ void main() {
       addTearDown(() => tester.view.resetPhysicalSize());
 
       await tester.pumpWidget(buildTestApp());
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 200));
 
       expect(find.text('Insights'), findsOneWidget);
       expect(find.text('0m'), findsWidgets);
@@ -134,13 +200,14 @@ void main() {
       expect(find.text('No application usage recorded for this period.'), findsOneWidget);
     });
 
-    testWidgets('Period switching updates displayed analytics and subtitle', (tester) async {
+    testWidgets('Changing the selected reporting period still refreshes the analytics', (tester) async {
       tester.view.physicalSize = const Size(1600, 1000);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
       await tester.pumpWidget(buildTestApp());
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 200));
 
       // Check default Last 7 Days
       expect(find.text('Last 7 Days'), findsOneWidget);
@@ -150,7 +217,9 @@ void main() {
       final todayPill = find.text('Today');
       expect(todayPill, findsOneWidget);
       await tester.tap(todayPill);
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 200));
 
       expect(find.text('Your digital usage and active breakdown for today.'), findsOneWidget);
       expect(find.text("Today's Usage"), findsOneWidget);
@@ -159,10 +228,33 @@ void main() {
       final thirtyDaysPill = find.text('Last 30 Days');
       expect(thirtyDaysPill, findsOneWidget);
       await tester.tap(thirtyDaysPill);
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 200));
 
       expect(find.text('Your 30-day digital trends and long-term usage patterns.'), findsOneWidget);
       expect(find.text('Daily Screen Time (Last 30 Days)'), findsOneWidget);
+    });
+
+    testWidgets('Rebuilding the widget does not trigger unnecessary duplicate analytics requests', (tester) async {
+      tester.view.physicalSize = const Size(1600, 1000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      final spyService = SpyUsageAnalyticsService(analyticsService);
+
+      await tester.pumpWidget(buildTestApp(service: spyService));
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 200));
+
+      expect(spyService.callCount, 1);
+
+      // Trigger a rebuild of the widget tree (e.g. parent theme change or re-render)
+      await tester.pumpWidget(buildTestApp(service: spyService));
+      await tester.pump(const Duration(milliseconds: 50));
+
+      // Should still be 1 request because _isInitialized guards against duplicate loads on rebuild
+      expect(spyService.callCount, 1);
     });
 
     testWidgets('Regression: Background refresh does NOT hide the dashboard with loading spinner', (tester) async {
@@ -178,7 +270,8 @@ void main() {
       ));
 
       await tester.pumpWidget(buildTestApp());
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 200));
 
       // Dashboard is now fully rendered
       expect(find.text('7-Day Daily Average'), findsOneWidget);
@@ -194,7 +287,7 @@ void main() {
       expect(find.text('VS Code'), findsWidgets);
       expect(find.text('Analyzing recorded usage...'), findsNothing);
 
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 100));
       expect(find.text('7-Day Daily Average'), findsOneWidget);
       expect(find.text('Analyzing recorded usage...'), findsNothing);
     });
@@ -205,17 +298,18 @@ void main() {
       addTearDown(() => tester.view.resetPhysicalSize());
 
       await tester.pumpWidget(buildTestApp());
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 200));
 
       // Fire 10 consecutive tracker ticks (simulating 20 seconds of live tracking)
       for (int i = 0; i < 10; i++) {
         tracker.notifyListeners();
-        await tester.pump(const Duration(milliseconds: 100));
+        await tester.pump(const Duration(milliseconds: 50));
         // Verify loading state is NEVER shown while dashboard is already loaded
         expect(find.text('Analyzing recorded usage...'), findsNothing);
       }
 
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 100));
       expect(find.text('Insights'), findsOneWidget);
     });
 
@@ -225,7 +319,8 @@ void main() {
       addTearDown(() => tester.view.resetPhysicalSize());
 
       await tester.pumpWidget(buildTestApp());
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 200));
 
       // Navigate away / replace with empty container (triggers dispose)
       await tester.pumpWidget(
@@ -233,7 +328,7 @@ void main() {
           home: Scaffold(body: Text('Other Screen')),
         ),
       );
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 100));
 
       // Tracker notification after dispose should not throw or cause errors
       expect(() => tracker.notifyListeners(), returnsNormally);

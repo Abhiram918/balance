@@ -53,23 +53,21 @@ class _InsightsScreenState extends State<InsightsScreen> {
   }
 
   void _initServiceAndLoad() {
+    final tracker = TrackerProvider.read(context);
+    _tracker = tracker;
+    _tracker?.addListener(_onTrackerNotification);
+
     if (widget.analyticsService != null) {
       _resolvedService = widget.analyticsService;
+    } else if (tracker != null) {
+      _resolvedService = UsageAnalyticsService(
+        repository: tracker.repository,
+        tracker: tracker,
+      );
     } else {
-      try {
-        final tracker = TrackerProvider.read(context) ?? TrackerProvider.of(context);
-        _tracker = tracker;
-        _resolvedService = UsageAnalyticsService(
-          repository: tracker.repository,
-          tracker: tracker,
-        );
-
-        _tracker?.addListener(_onTrackerNotification);
-      } catch (e) {
-        _errorMessage = 'Could not access tracking service: $e';
-        _isLoading = false;
-        return;
-      }
+      _errorMessage = 'Could not access tracking service';
+      _isLoading = false;
+      return;
     }
 
     _loadAnalytics(isInitial: true);
@@ -89,8 +87,9 @@ class _InsightsScreenState extends State<InsightsScreen> {
     }
   }
 
-  Future<void> _loadAnalytics({bool isInitial = false}) async {
-    if (_resolvedService == null || _isFetching) return;
+  Future<void> _loadAnalytics({bool isInitial = false, bool force = false}) async {
+    if (_resolvedService == null) return;
+    if (_isFetching && !force) return;
 
     _isFetching = true;
     final currentRequestId = ++_requestId;
@@ -199,7 +198,7 @@ class _InsightsScreenState extends State<InsightsScreen> {
                 setState(() {
                   _selectedPeriod = period;
                 });
-                _loadAnalytics(isInitial: false);
+                _loadAnalytics(isInitial: false, force: true);
               }
             },
             borderRadius: BorderRadius.circular(8),

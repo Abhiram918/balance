@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
+import '../models/app_block_event.dart';
 import '../models/app_limit.dart';
 import 'windows_process_manager.dart';
 
@@ -28,7 +29,8 @@ class EnforcementResult {
 /// Dedicated Windows application-limit enforcement service.
 /// Safely identifies, gracefully requests close, and falls back to terminating
 /// target processes when an application's daily usage allowance is exceeded.
-/// Monitors for and blocks reopening across local calendar days.
+/// Monitors for and blocks reopening across local calendar days, and emits
+/// user-facing block dialog events.
 class AppEnforcementService extends ChangeNotifier {
   final ProcessManager processManager;
   final Duration gracePeriod;
@@ -38,6 +40,13 @@ class AppEnforcementService extends ChangeNotifier {
   final Map<String, DateTime> _lastEnforcementTime = {};
   String _activeDateKey = '';
   final Duration _cooldownDuration = const Duration(seconds: 2);
+
+  final StreamController<AppBlockEvent> _blockEventController =
+      StreamController<AppBlockEvent>.broadcast();
+
+  /// Stream of block events emitted whenever an application limit is enforced
+  /// or when a user attempts to launch an exceeded application.
+  Stream<AppBlockEvent> get blockEvents => _blockEventController.stream;
 
   AppEnforcementService({
     ProcessManager? processManager,
@@ -60,6 +69,21 @@ class AppEnforcementService extends ChangeNotifier {
   bool isAppRestricted(String appName) {
     _checkDailyReset();
     return _restrictedApps.contains(appName.trim().toLowerCase());
+  }
+
+  /// Removes active restriction for an application (e.g. when limit is deleted or disabled).
+  void removeRestriction(String appName) {
+    final key = appName.trim().toLowerCase();
+    if (_restrictedApps.remove(key)) {
+      notifyListeners();
+    }
+  }
+
+  /// Dispatches an [AppBlockEvent] to all listening UI overlays.
+  void dispatchBlockEvent(AppBlockEvent event) {
+    if (!_blockEventController.isClosed) {
+      _blockEventController.add(event);
+    }
   }
 
   /// Recalculates and updates active daily restrictions across all limits based on recorded usage.
@@ -92,7 +116,12 @@ class AppEnforcementService extends ChangeNotifier {
   }
 
   /// Enforces a daily limit by closing all running instances of the restricted application.
-  Future<EnforcementResult> enforceLimit(AppLimit limit) async {
+  /// Dispatches an [AppBlockEvent] to request the Flutter dialog popup.
+  Future<EnforcementResult> enforceLimit(
+    AppLimit limit, {
+    Duration? usedDuration,
+    bool triggerDialog = true,
+  }) async {
     _checkDailyReset();
 
     if (!limit.isEnabled || !limit.isEnforced) {
@@ -125,51 +154,44 @@ class AppEnforcementService extends ChangeNotifier {
       exePath: limit.exePath,
     );
 
-    if (processes.isEmpty) {
-      return EnforcementResult(
-        appName: limit.appName,
-        isEnforced: true,
-        discoveredProcesses: 0,
-        message: 'No running instances of ${limit.appName} found.',
-      );
-    }
-
     int gracefullyClosed = 0;
     int terminated = 0;
 
-    // 1. Attempt graceful close on all discovered processes
-    for (final process in processes) {
-      try {
-        final closed = await processManager.closeProcessGracefully(process);
-        if (closed) {
-          gracefullyClosed++;
-        }
-      } catch (e) {
-        debugPrint('Graceful close error for ${process.exeName}: $e');
-      }
-    }
-
-    // 2. Wait for the grace period to allow the app to save/exit gracefully
-    if (gracePeriod > Duration.zero) {
-      await Future.delayed(gracePeriod);
-    }
-
-    // 3. Fall back to terminating any processes that remain alive
-    for (final process in processes) {
-      try {
-        final isRunning = await processManager.isProcessRunning(process.pid);
-        if (isRunning) {
-          final killed = await processManager.terminateProcess(process.pid);
-          if (killed) {
-            terminated++;
+    if (processes.isNotEmpty) {
+      // 1. Attempt graceful close on all discovered processes
+      for (final process in processes) {
+        try {
+          final closed = await processManager.closeProcessGracefully(process);
+          if (closed) {
+            gracefullyClosed++;
           }
+        } catch (e) {
+          debugPrint('Graceful close error for ${process.exeName}: $e');
         }
-      } catch (e) {
-        debugPrint('Termination error for PID ${process.pid}: $e');
+      }
+
+      // 2. Wait for the grace period to allow the app to save/exit gracefully
+      if (gracePeriod > Duration.zero) {
+        await Future.delayed(gracePeriod);
+      }
+
+      // 3. Fall back to terminating any processes that remain alive
+      for (final process in processes) {
+        try {
+          final isRunning = await processManager.isProcessRunning(process.pid);
+          if (isRunning) {
+            final killed = await processManager.terminateProcess(process.pid);
+            if (killed) {
+              terminated++;
+            }
+          }
+        } catch (e) {
+          debugPrint('Termination error for PID ${process.pid}: $e');
+        }
       }
     }
 
-    return EnforcementResult(
+    final result = EnforcementResult(
       appName: limit.appName,
       isEnforced: true,
       discoveredProcesses: processes.length,
@@ -177,10 +199,27 @@ class AppEnforcementService extends ChangeNotifier {
       terminated: terminated,
       message: 'Enforced limit on ${limit.appName}. Discovered: ${processes.length}, Gracefully closed: $gracefullyClosed, Terminated: $terminated.',
     );
+
+    // Dispatch Block Dialog event if requested and applicable
+    if (triggerDialog) {
+      final nextMidnight = DateTime(now.year, now.month, now.day + 1);
+      final event = AppBlockEvent(
+        appName: limit.appName,
+        exePath: limit.exePath,
+        limitDuration: limit.limitDuration,
+        usedDuration: usedDuration ?? limit.limitDuration,
+        resetTime: nextMidnight,
+        timestamp: now,
+      );
+      dispatchBlockEvent(event);
+    }
+
+    return result;
   }
 
   /// Hook called whenever a window is foregrounded or reopened.
-  /// If the foreground application is restricted, immediately executes enforcement.
+  /// If the foreground application is restricted, immediately executes enforcement
+  /// and requests the block dialog to appear.
   Future<void> onForegroundAppDetected({
     required String appName,
     required String exePath,
@@ -192,7 +231,7 @@ class AppEnforcementService extends ChangeNotifier {
     final cleanName = appName.trim().toLowerCase();
     AppLimit? matchingLimit;
     for (final l in limits) {
-      if (l.appName.trim().toLowerCase() == cleanName) {
+      if (_matchesApp(l, appName, exePath)) {
         matchingLimit = l;
         break;
       }
@@ -203,9 +242,37 @@ class AppEnforcementService extends ChangeNotifier {
     }
 
     if (todayUsage >= matchingLimit.limitDuration || _restrictedApps.contains(cleanName)) {
-      debugPrint('Enforced application reopened while exceeded: $appName. Closing...');
-      await enforceLimit(matchingLimit);
+      debugPrint('Enforced application reopened while exceeded: $appName. Closing and prompting dialog...');
+      await enforceLimit(
+        matchingLimit,
+        usedDuration: todayUsage,
+        triggerDialog: true,
+      );
     }
+  }
+
+  bool _matchesApp(AppLimit limit, String appName, String exePath) {
+    final cleanLimitApp = limit.appName.trim().toLowerCase();
+    final cleanTargetApp = appName.trim().toLowerCase();
+    if (cleanLimitApp == cleanTargetApp) return true;
+
+    if (limit.exePath != null && limit.exePath!.isNotEmpty && exePath.isNotEmpty) {
+      if (limit.exePath!.trim().toLowerCase() == exePath.trim().toLowerCase()) {
+        return true;
+      }
+    }
+
+    if (exePath.isNotEmpty) {
+      final exeName = exePath.split(r'\').last.toLowerCase();
+      final baseName = exeName.endsWith('.exe')
+          ? exeName.substring(0, exeName.length - 4)
+          : exeName;
+      if (cleanLimitApp == exeName || cleanLimitApp == baseName) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   void _syncDateKey() {
@@ -220,5 +287,11 @@ class AppEnforcementService extends ChangeNotifier {
       _lastEnforcementTime.clear();
       notifyListeners();
     }
+  }
+
+  @override
+  void dispose() {
+    _blockEventController.close();
+    super.dispose();
   }
 }

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
+import '../models/app_block_event.dart';
 import '../models/app_limit.dart';
 import '../models/discovered_app.dart';
 import '../models/usage_data.dart';
@@ -26,6 +27,10 @@ class LimitsService extends ChangeNotifier {
   bool _isLoading = false;
   String? _errorMessage;
   bool _isDisposed = false;
+
+  /// Stream of application block events forwarded from [AppEnforcementService].
+  Stream<AppBlockEvent> get blockEvents =>
+      enforcementService?.blockEvents ?? const Stream.empty();
 
   LimitsService({
     required this.repository,
@@ -240,6 +245,10 @@ class LimitsService extends ChangeNotifier {
       updatedAt: _clock(),
     );
 
+    if (!isEnforced) {
+      enforcementService?.removeRestriction(updated.appName);
+    }
+
     await repository.updateLimit(updated);
     _limits = await repository.getAllLimits();
     await evaluateUsage();
@@ -256,6 +265,10 @@ class LimitsService extends ChangeNotifier {
       updatedAt: _clock(),
     );
 
+    if (!isEnabled) {
+      enforcementService?.removeRestriction(updated.appName);
+    }
+
     await repository.updateLimit(updated);
     _limits = await repository.getAllLimits();
     await evaluateUsage();
@@ -264,8 +277,12 @@ class LimitsService extends ChangeNotifier {
 
   /// Deletes a limit and clears its notification logs.
   Future<void> deleteLimit(int id) async {
+    final limit = _limits.where((l) => l.id == id).firstOrNull;
+    if (limit != null) {
+      enforcementService?.removeRestriction(limit.appName);
+    }
     await repository.deleteLimit(id);
-    _limits.removeWhere((l) => l.id == id);
+    _limits = List<AppLimit>.from(await repository.getAllLimits());
     notifyListeners();
   }
 
@@ -350,7 +367,11 @@ class LimitsService extends ChangeNotifier {
 
         // Automatic Application-Limit Enforcement
         if (limit.isEnforced) {
-          await enforcementService?.enforceLimit(limit);
+          await enforcementService?.enforceLimit(
+            limit,
+            usedDuration: used,
+            triggerDialog: !alreadySent,
+          );
         }
       }
     }

@@ -4,6 +4,7 @@ import '../../app/theme/app_theme.dart';
 import '../core/services/focus_service.dart';
 import '../core/services/limits_service.dart';
 import '../core/services/settings_service.dart';
+import '../core/widgets/app_block_dialog_manager.dart';
 import '../core/widgets/app_shell.dart';
 import '../core/services/windows_usage_tracker.dart';
 
@@ -65,7 +66,9 @@ class _BalanceAppState extends State<BalanceApp> with WidgetsBindingObserver {
                   themeMode: widget.settingsService.darkMode ? ThemeMode.dark : ThemeMode.light,
                   theme: AppTheme.lightTheme,
                   darkTheme: AppTheme.darkTheme,
-                  home: const AppShell(),
+                  home: const AppBlockDialogManager(
+                    child: AppShell(),
+                  ),
                 );
               },
             ),
