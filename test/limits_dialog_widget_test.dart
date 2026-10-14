@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import 'package:balance/app/app.dart';
 import 'package:balance/app/theme/app_colors.dart';
 import 'package:balance/core/models/app_limit.dart';
@@ -39,6 +40,11 @@ class FakeLimitsRepository extends UsageRepository {
   @override
   Future<List<String>> getDistinctTrackedApps() async {
     return List.unmodifiable(distinctApps);
+  }
+
+  @override
+  Future<List<Map<String, String>>> getDistinctTrackedAppsWithPaths() async {
+    return distinctApps.map((a) => {'appName': a, 'exePath': ''}).toList();
   }
 
   @override
@@ -167,7 +173,7 @@ void main() {
       expect(find.text('Daily Allowance'), findsOneWidget);
 
       // Enter app name in TextField
-      final appNameField = find.byType(TextField);
+      final appNameField = find.widgetWithText(TextField, 'Application Name');
       expect(appNameField, findsOneWidget);
       await tester.enterText(appNameField, 'Slack');
       await tester.pumpAndSettle();
@@ -212,9 +218,10 @@ void main() {
       // Dialog is open
       expect(find.text('Set App Limit'), findsOneWidget);
 
-      // Dropdown should be present since tracked apps exist
-      expect(find.byType(DropdownButtonFormField<String>), findsOneWidget);
+      // Searchable picker should be present and show discovered apps
+      expect(find.byIcon(LucideIcons.search), findsOneWidget);
       expect(find.text('Discord'), findsWidgets);
+      expect(find.text('VS Code'), findsWidgets);
 
       // Click Create Limit (uses default selected app Discord)
       final createButton = find.text('Create Limit');
@@ -257,6 +264,55 @@ void main() {
       // Dialog is dismissed and no limits are created
       expect(find.text('Set App Limit'), findsNothing);
       expect(limitsService.limits, isEmpty);
+    });
+
+    testWidgets('Dialog prevents selecting Balance as a limit target', (tester) async {
+      tester.view.physicalSize = const Size(1600, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      await tester.pumpWidget(buildTestApp());
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Set Your First Limit'));
+      await tester.pumpAndSettle();
+
+      final appNameField = find.widgetWithText(TextField, 'Application Name');
+      await tester.enterText(appNameField, 'Balance');
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Create Limit'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Balance itself cannot be set as a limit target.'), findsOneWidget);
+      expect(limitsService.limits, isEmpty);
+    });
+
+    testWidgets('Search filters apps in searchable picker', (tester) async {
+      tester.view.physicalSize = const Size(1600, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      repository.distinctApps.addAll(['Telegram', 'Microsoft Edge', 'Spotify']);
+      await tester.pumpWidget(buildTestApp());
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Set Your First Limit'));
+      await tester.pumpAndSettle();
+
+      // Initially shows Telegram, Microsoft Edge, Spotify
+      expect(find.text('Telegram'), findsWidgets);
+      expect(find.text('Microsoft Edge'), findsWidgets);
+      expect(find.text('Spotify'), findsWidgets);
+
+      // Type "Edge" in search
+      final searchField = find.widgetWithText(TextField, 'Search applications by name or .exe...');
+      await tester.enterText(searchField, 'Edge');
+      await tester.pumpAndSettle();
+
+      expect(find.text('Microsoft Edge'), findsWidgets);
+      expect(find.text('Telegram'), findsNothing);
+      expect(find.text('Spotify'), findsNothing);
     });
   });
 }

@@ -722,13 +722,11 @@ enum _PickerFilterTab { all, installed, tracked }
 class _LimitDialog extends StatefulWidget {
   final LimitsService service;
   final List<DiscoveredApp>? discoveredApps;
-  final List<String>? availableApps; // backward-compatibility for widget tests
   final AppLimit? existingLimit;
 
   const _LimitDialog({
     required this.service,
     this.discoveredApps,
-    this.availableApps,
     this.existingLimit,
   });
 
@@ -765,15 +763,6 @@ class _LimitDialogState extends State<_LimitDialog> {
     // Initialize applications list
     if (widget.discoveredApps != null && widget.discoveredApps!.isNotEmpty) {
       _allApps = List.from(widget.discoveredApps!);
-    } else if (widget.availableApps != null && widget.availableApps!.isNotEmpty) {
-      _allApps = widget.availableApps!
-          .map((name) => DiscoveredApp(
-                id: name.toLowerCase(),
-                displayName: name,
-                isPreviouslyTracked: true,
-                source: AppDiscoverySource.historicalTracked,
-              ))
-          .toList();
     }
 
     final existing = widget.existingLimit;
@@ -809,6 +798,8 @@ class _LimitDialogState extends State<_LimitDialog> {
 
       if (_allApps.isNotEmpty) {
         _selectedApp = _allApps.first;
+      } else {
+        _isManualEntry = true;
       }
     }
 
@@ -840,6 +831,9 @@ class _LimitDialogState extends State<_LimitDialog> {
           _isScanning = false;
           if (_selectedApp == null && apps.isNotEmpty) {
             _selectedApp = apps.first;
+            if (_customAppController.text.isEmpty) {
+              _isManualEntry = false;
+            }
           }
         });
       }
@@ -1447,7 +1441,7 @@ class _LimitDialogState extends State<_LimitDialog> {
     return ListView.separated(
       padding: const EdgeInsets.symmetric(vertical: 4),
       itemCount: apps.length,
-      separatorBuilder: (_, __) => Divider(height: 1, thickness: 0.5, color: colors.surfaceSecondary),
+      separatorBuilder: (context, index) => Divider(height: 1, thickness: 0.5, color: colors.surfaceSecondary),
       itemBuilder: (context, index) {
         final app = apps[index];
         final isSelected = _selectedApp?.id == app.id;
@@ -1535,7 +1529,7 @@ class _LimitDialogState extends State<_LimitDialog> {
             width: 28,
             height: 28,
             fit: BoxFit.contain,
-            errorBuilder: (_, __, ___) => _buildFallbackVectorIcon(appName),
+            errorBuilder: (context, error, stackTrace) => _buildFallbackVectorIcon(appName),
           ),
         );
       } catch (_) {}

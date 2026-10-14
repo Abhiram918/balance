@@ -290,6 +290,21 @@ class WindowsProcessManager implements ProcessManager {
     return false;
   }
 
+  @visibleForTesting
+  bool matchesProcess({
+    required String processName,
+    required String appName,
+    String? processExePath,
+    String? targetExePath,
+  }) {
+    return _matchesApp(
+      candidateExePath: processExePath ?? processName,
+      candidateExeName: processName,
+      targetAppName: appName,
+      targetExePath: targetExePath,
+    );
+  }
+
   bool _matchesApp({
     required String candidateExePath,
     required String candidateExeName,

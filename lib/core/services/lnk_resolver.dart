@@ -184,6 +184,9 @@ class LnkResolver {
   }
 
   /// Cleans quotes and expands environment variables in path string.
+  static String expandEnvVars(String raw) => cleanPath(raw);
+
+  /// Cleans quotes and expands environment variables in path string.
   static String cleanPath(String raw) {
     var s = raw.trim();
     if (s.startsWith('"') && s.endsWith('"') && s.length >= 2) {

@@ -282,8 +282,7 @@ class WindowsAppDiscoveryService {
         if (_isExcludedApp(displayName, exePath, selfExe)) continue;
 
         // Skip registry items that cannot be resolved to a legitimate executable
-        // and have no install location, preventing dummy uninstall keys
-        if (exePath == null && (installLocation == null || !_fileExists(installLocation))) {
+        if (exePath == null) {
           continue;
         }
 
@@ -294,7 +293,7 @@ class WindowsAppDiscoveryService {
           id: key,
           displayName: existing?.displayName ?? displayName,
           executablePath: existing?.executablePath ?? exePath,
-          executableName: existing?.executableName ?? (exePath != null ? p.basename(exePath) : null),
+          executableName: existing?.executableName ?? p.basename(exePath),
           publisher: publisher ?? existing?.publisher,
           source: existing?.source ?? AppDiscoverySource.registry,
           isPreviouslyTracked: existing?.isPreviouslyTracked ?? false,
@@ -436,6 +435,13 @@ class WindowsAppDiscoveryService {
 
     // 1. Balance self-exclusion (by path, executable name, or app title)
     if (_isBalanceSelf(nameLower, exePath, selfExe)) {
+      return true;
+    }
+
+    // Exclude uninstaller entries by name
+    if (nameLower.contains('uninstall') ||
+        nameLower.startsWith('unins') ||
+        nameLower.contains('uninstaller')) {
       return true;
     }
 
