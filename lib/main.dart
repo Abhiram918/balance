@@ -7,6 +7,7 @@ import 'core/services/limits_service.dart';
 import 'core/services/settings_service.dart';
 import 'core/services/usage_repository.dart';
 import 'core/services/windows_app_discovery_service.dart';
+import 'core/services/windows_tray_service.dart';
 import 'core/services/windows_usage_tracker.dart';
 
 void main() async {
@@ -45,12 +46,22 @@ void main() async {
     discoveryService: discoveryService,
   );
   await limitsService.init();
+
+  final trayService = WindowsTrayService(
+    onShutdown: () async {
+      await tracker.stop();
+      enforcementService.dispose();
+      await repository.close();
+    },
+  );
+  await trayService.init();
   
   runApp(BalanceApp(
     tracker: tracker,
     settingsService: settingsService,
     focusService: focusService,
     limitsService: limitsService,
+    trayService: trayService,
   ));
 }
 

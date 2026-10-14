@@ -82,7 +82,7 @@ void main() {
       );
       await legacyRepo.database;
 
-      final now = DateTime.now();
+      final now = DateTime(2026, 10, 15, 14, 0);
       await legacyRepo.insertSession(AppSession(
         appName: 'LegacyApp',
         exePath: r'C:\legacy.exe',
@@ -182,7 +182,7 @@ void main() {
       await Directory(legacyDir1).create(recursive: true);
       await Directory(legacyDir2).create(recursive: true);
 
-      final now = DateTime.now();
+      final now = DateTime(2026, 10, 15, 14, 0);
 
       // DB 1: Has Session 1
       final repo1 = UsageRepository(dbName: p.join(legacyDir1, 'usage.db'), enableLegacyMigration: false);

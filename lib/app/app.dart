@@ -8,11 +8,14 @@ import '../core/widgets/app_block_dialog_manager.dart';
 import '../core/widgets/app_shell.dart';
 import '../core/services/windows_usage_tracker.dart';
 
+import '../core/services/windows_tray_service.dart';
+
 class BalanceApp extends StatefulWidget {
   final WindowsUsageTracker tracker;
   final SettingsService settingsService;
   final FocusService focusService;
   final LimitsService limitsService;
+  final WindowsTrayService? trayService;
 
   const BalanceApp({
     super.key,
@@ -20,6 +23,7 @@ class BalanceApp extends StatefulWidget {
     required this.settingsService,
     required this.focusService,
     required this.limitsService,
+    this.trayService,
   });
 
   @override
@@ -38,6 +42,7 @@ class _BalanceAppState extends State<BalanceApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     widget.focusService.dispose();
     widget.limitsService.dispose();
+    widget.trayService?.dispose();
     super.dispose();
   }
 

@@ -17,7 +17,7 @@ void main() {
     });
 
     test('Insert and retrieve sessions for the same day', () async {
-      final now = DateTime.now();
+      final now = DateTime(2026, 10, 15, 12, 0);
       
       final session1 = AppSession(
         appName: 'Test App 1',
