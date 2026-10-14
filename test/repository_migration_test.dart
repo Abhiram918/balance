@@ -1,0 +1,420 @@
+import 'dart:io';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:balance/core/models/app_limit.dart';
+import 'package:balance/core/models/app_session.dart';
+import 'package:balance/core/models/focus_session.dart';
+import 'package:balance/core/services/usage_repository.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+
+void main() {
+  setUpAll(() {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+  });
+
+  group('Database Schema and Migration Tests', () {
+    test('Migration from v1 preserves existing records and adds index and settings', () async {
+      final tempDir = await Directory.systemTemp.createTemp('balance_migration_test');
+      final dbPath = '${tempDir.path}${Platform.pathSeparator}migration_test.db';
+
+      // 1. Create a version 1 database with the old schema
+      var db = await databaseFactory.openDatabase(
+        dbPath,
+        options: OpenDatabaseOptions(
+          version: 1,
+          onCreate: (db, version) async {
+            await db.execute('''
+              CREATE TABLE AppSessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                appName TEXT NOT NULL,
+                exePath TEXT NOT NULL,
+                startTime INTEGER NOT NULL,
+                endTime INTEGER NOT NULL
+              )
+            ''');
+          },
+        ),
+      );
+
+      // Insert test records into v1
+      final now = DateTime.now();
+      await db.insert('AppSessions', {
+        'appName': 'V1 Old App',
+        'exePath': r'C:\old.exe',
+        'startTime': now.subtract(const Duration(hours: 1)).millisecondsSinceEpoch,
+        'endTime': now.millisecondsSinceEpoch,
+      });
+
+      await db.close();
+
+      // 2. Open with the new v2 schema with onUpgrade
+      db = await databaseFactory.openDatabase(
+        dbPath,
+        options: OpenDatabaseOptions(
+          version: 2,
+          onUpgrade: (db, oldVersion, newVersion) async {
+            if (oldVersion < 2) {
+              await db.execute('''
+                CREATE INDEX IF NOT EXISTS idx_sessions_time ON AppSessions (startTime, endTime)
+              ''');
+              await db.execute('''
+                CREATE TABLE IF NOT EXISTS Settings (
+                  key TEXT PRIMARY KEY,
+                  value TEXT NOT NULL
+                )
+              ''');
+            }
+          },
+        ),
+      );
+
+      // Verify old records are preserved
+      final records = await db.query('AppSessions');
+      expect(records.length, equals(1));
+      expect(records.first['appName'], equals('V1 Old App'));
+
+      // Verify Settings table exists and is writable
+      await db.insert('Settings', {'key': 'testKey', 'value': 'testVal'});
+      final settings = await db.query('Settings', where: 'key = ?', whereArgs: ['testKey']);
+      expect(settings.first['value'], equals('testVal'));
+
+      await db.close();
+      await tempDir.delete(recursive: true);
+    });
+
+    test('getSessionsForDay retrieves sessions that overlap day boundaries', () async {
+      final repository = UsageRepository(dbName: 'boundary_test.db');
+      final db = await repository.database;
+      await db.delete('AppSessions');
+      final day = DateTime(2026, 10, 11);
+      final startOfDay = DateTime(2026, 10, 11, 0, 0);
+
+      // Session started yesterday at 23:30, ended today at 00:30
+      final crossingMidnightSession = AppSession(
+        appName: 'MidnightApp',
+        exePath: r'C:\midnight.exe',
+        startTime: startOfDay.subtract(const Duration(minutes: 30)),
+        endTime: startOfDay.add(const Duration(minutes: 30)),
+      );
+
+      // Session completely within today
+      final normalSession = AppSession(
+        appName: 'NormalApp',
+        exePath: r'C:\normal.exe',
+        startTime: DateTime(2026, 10, 11, 14, 0),
+        endTime: DateTime(2026, 10, 11, 15, 0),
+      );
+
+      // Session completely in yesterday
+      final yesterdaySession = AppSession(
+        appName: 'YesterdayApp',
+        exePath: r'C:\yesterday.exe',
+        startTime: DateTime(2026, 10, 10, 10, 0),
+        endTime: DateTime(2026, 10, 10, 11, 0),
+      );
+
+      await repository.insertSession(crossingMidnightSession);
+      await repository.insertSession(normalSession);
+      await repository.insertSession(yesterdaySession);
+
+      final todaySessions = await repository.getSessionsForDay(day);
+
+      expect(todaySessions.any((s) => s.appName == 'MidnightApp'), isTrue);
+      expect(todaySessions.any((s) => s.appName == 'NormalApp'), isTrue);
+      expect(todaySessions.any((s) => s.appName == 'YesterdayApp'), isFalse);
+    });
+
+    test('Migration from v2 to v3 creates FocusSessions and ActiveFocus tables and preserves records', () async {
+      final tempDir = await Directory.systemTemp.createTemp('balance_v3_migration_test');
+      final dbPath = '${tempDir.path}${Platform.pathSeparator}v3_migration.db';
+
+      // 1. Create a version 2 database with AppSessions and Settings
+      var db = await databaseFactory.openDatabase(
+        dbPath,
+        options: OpenDatabaseOptions(
+          version: 2,
+          onCreate: (db, version) async {
+            await db.execute('''
+              CREATE TABLE AppSessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                appName TEXT NOT NULL,
+                exePath TEXT NOT NULL,
+                startTime INTEGER NOT NULL,
+                endTime INTEGER NOT NULL
+              )
+            ''');
+            await db.execute('''
+              CREATE TABLE Settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+              )
+            ''');
+          },
+        ),
+      );
+
+      await db.insert('AppSessions', {
+        'appName': 'V2 App',
+        'exePath': r'C:\v2.exe',
+        'startTime': 1000,
+        'endTime': 2000,
+      });
+      await db.insert('Settings', {'key': 'theme', 'value': 'dark'});
+      await db.close();
+
+      // 2. Open using UsageRepository (which upgrades to v3)
+      final repo = UsageRepository(dbName: dbPath);
+      final upgradedDb = await repo.database;
+
+      // Old records preserved
+      final apps = await upgradedDb.query('AppSessions');
+      expect(apps.length, equals(1));
+      expect(apps.first['appName'], equals('V2 App'));
+
+      final settingsVal = await repo.getSetting('theme');
+      expect(settingsVal, equals('dark'));
+
+      // v3 tables are writable
+      final focusSession = FocusSessionRecord(
+        type: FocusSessionType.focus,
+        plannedDuration: const Duration(minutes: 25),
+        actualDuration: const Duration(minutes: 25),
+        startTime: DateTime.fromMillisecondsSinceEpoch(10000),
+        endTime: DateTime.fromMillisecondsSinceEpoch(25000),
+        completedNaturally: true,
+      );
+      final inserted = await repo.insertFocusSession(focusSession);
+      expect(inserted.id, isNotNull);
+
+      final recent = await repo.getRecentFocusSessions();
+      expect(recent.length, equals(1));
+      expect(recent.first.type, equals(FocusSessionType.focus));
+
+      await repo.close();
+      await tempDir.delete(recursive: true);
+    });
+
+    test('Migration from v3 to v4 creates AppLimits and LimitNotificationLog tables while preserving existing data', () async {
+      final tempDir = await Directory.systemTemp.createTemp('balance_v4_migration_test');
+      final dbPath = '${tempDir.path}${Platform.pathSeparator}v4_migration.db';
+
+      // 1. Create a version 3 database with AppSessions, Settings, FocusSessions, ActiveFocus
+      var db = await databaseFactory.openDatabase(
+        dbPath,
+        options: OpenDatabaseOptions(
+          version: 3,
+          onCreate: (db, version) async {
+            await db.execute('''
+              CREATE TABLE AppSessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                appName TEXT NOT NULL,
+                exePath TEXT NOT NULL,
+                startTime INTEGER NOT NULL,
+                endTime INTEGER NOT NULL
+              )
+            ''');
+            await db.execute('''
+              CREATE TABLE Settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+              )
+            ''');
+            await db.execute('''
+              CREATE TABLE FocusSessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                type TEXT NOT NULL,
+                plannedSeconds INTEGER NOT NULL,
+                actualSeconds INTEGER NOT NULL,
+                startTime INTEGER NOT NULL,
+                endTime INTEGER NOT NULL,
+                completedNaturally INTEGER NOT NULL
+              )
+            ''');
+            await db.execute('''
+              CREATE TABLE ActiveFocus (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                type TEXT NOT NULL,
+                status TEXT NOT NULL,
+                targetSeconds INTEGER NOT NULL,
+                startTime INTEGER NOT NULL,
+                expectedEndTime INTEGER NOT NULL,
+                remainingSeconds INTEGER NOT NULL
+              )
+            ''');
+          },
+        ),
+      );
+
+      // Populate v3 records
+      await db.insert('AppSessions', {
+        'appName': 'V3 Chrome',
+        'exePath': r'C:\chrome.exe',
+        'startTime': 100000,
+        'endTime': 200000,
+      });
+      await db.insert('Settings', {'key': 'idleTimeout', 'value': '300'});
+      await db.insert('FocusSessions', {
+        'type': 'focus',
+        'plannedSeconds': 1500,
+        'actualSeconds': 1500,
+        'startTime': 100000,
+        'endTime': 101500,
+        'completedNaturally': 1,
+      });
+      await db.close();
+
+      // 2. Open using UsageRepository (which runs onUpgrade for v3 -> v4)
+      final repo = UsageRepository(dbName: dbPath);
+      final upgradedDb = await repo.database;
+
+      // Verify all v3 records are preserved
+      final apps = await upgradedDb.query('AppSessions');
+      expect(apps.length, equals(1));
+      expect(apps.first['appName'], equals('V3 Chrome'));
+
+      final settingsVal = await repo.getSetting('idleTimeout');
+      expect(settingsVal, equals('300'));
+
+      final focusSessions = await repo.getRecentFocusSessions();
+      expect(focusSessions.length, equals(1));
+      expect(focusSessions.first.plannedDuration, equals(const Duration(seconds: 1500)));
+
+      // 3. Verify v4 AppLimits table works with CRUD
+      final limit = AppLimit(
+        appName: 'V3 Chrome',
+        exePath: r'C:\chrome.exe',
+        limitDuration: const Duration(hours: 1),
+        warningThresholdPercentage: 75,
+        isEnabled: true,
+        createdAt: DateTime(2026, 10, 11, 10, 0),
+        updatedAt: DateTime(2026, 10, 11, 10, 0),
+      );
+      final insertedLimit = await repo.insertLimit(limit);
+      expect(insertedLimit.id, isNotNull);
+
+      final retrievedLimits = await repo.getAllLimits();
+      expect(retrievedLimits.length, equals(1));
+      expect(retrievedLimits.first.appName, equals('V3 Chrome'));
+      expect(retrievedLimits.first.warningThresholdPercentage, equals(75));
+
+      // 4. Verify v4 LimitNotificationLog table works with deduplication
+      final wasSentBefore = await repo.hasLimitNotificationBeenSent(
+        insertedLimit.id!,
+        'warning',
+        '2026-10-11',
+      );
+      expect(wasSentBefore, isFalse);
+
+      await repo.recordLimitNotificationSent(
+        insertedLimit.id!,
+        'warning',
+        '2026-10-11',
+        DateTime(2026, 10, 11, 10, 45),
+      );
+
+      final wasSentAfter = await repo.hasLimitNotificationBeenSent(
+        insertedLimit.id!,
+        'warning',
+        '2026-10-11',
+      );
+      expect(wasSentAfter, isTrue);
+
+      // Verify different date is not marked as sent
+      final wasSentNextDay = await repo.hasLimitNotificationBeenSent(
+        insertedLimit.id!,
+        'warning',
+        '2026-10-12',
+      );
+      expect(wasSentNextDay, isFalse);
+
+      await repo.close();
+      await tempDir.delete(recursive: true);
+    });
+
+    test('Migration from v4 to v5 adds isEnforced column and preserves existing app limits', () async {
+      final tempDir = await Directory.systemTemp.createTemp('balance_v5_migration_test');
+      final dbPath = '${tempDir.path}${Platform.pathSeparator}v5_migration.db';
+
+      // 1. Create a version 4 database with AppLimits table (without isEnforced column)
+      var db = await databaseFactory.openDatabase(
+        dbPath,
+        options: OpenDatabaseOptions(
+          version: 4,
+          onCreate: (db, version) async {
+            await db.execute('''
+              CREATE TABLE AppLimits (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                appName TEXT NOT NULL UNIQUE,
+                exePath TEXT,
+                limitMinutes INTEGER NOT NULL,
+                warningPercentage INTEGER NOT NULL DEFAULT 80,
+                isEnabled INTEGER NOT NULL DEFAULT 1,
+                createdAt INTEGER NOT NULL,
+                updatedAt INTEGER NOT NULL
+              )
+            ''');
+          },
+        ),
+      );
+
+      // Populate existing v4 record
+      final now = DateTime(2026, 10, 11, 10, 0);
+      await db.insert('AppLimits', {
+        'appName': 'Telegram',
+        'exePath': r'C:\Telegram.exe',
+        'limitMinutes': 5,
+        'warningPercentage': 85,
+        'isEnabled': 1,
+        'createdAt': now.millisecondsSinceEpoch,
+        'updatedAt': now.millisecondsSinceEpoch,
+      });
+      await db.close();
+
+      // 2. Open using UsageRepository (which upgrades v4 -> v5)
+      final repo = UsageRepository(dbName: dbPath);
+      final upgradedDb = await repo.database;
+
+      // Verify v4 records are preserved and isEnforced defaults to false (0)
+      final rawRecords = await upgradedDb.query('AppLimits');
+      expect(rawRecords.length, equals(1));
+      expect(rawRecords.first['appName'], equals('Telegram'));
+      expect(rawRecords.first['isEnforced'], equals(0));
+
+      final limits = await repo.getAllLimits();
+      expect(limits.length, equals(1));
+      final telegramLimit = limits.first;
+      expect(telegramLimit.appName, equals('Telegram'));
+      expect(telegramLimit.limitMinutes, equals(5));
+      expect(telegramLimit.warningThresholdPercentage, equals(85));
+      expect(telegramLimit.isEnabled, isTrue);
+      expect(telegramLimit.isEnforced, isFalse);
+
+      // 3. Update existing limit to enable enforcement
+      final enforcedLimit = telegramLimit.copyWith(isEnforced: true);
+      await repo.updateLimit(enforcedLimit);
+
+      final updated = await repo.getLimitById(enforcedLimit.id!);
+      expect(updated, isNotNull);
+      expect(updated!.isEnforced, isTrue);
+
+      // 4. Insert a new limit with enforcement enabled
+      final newLimit = AppLimit(
+        appName: 'Discord',
+        limitDuration: const Duration(hours: 1),
+        isEnforced: true,
+        createdAt: now,
+        updatedAt: now,
+      );
+      final inserted = await repo.insertLimit(newLimit);
+      expect(inserted.id, isNotNull);
+      expect(inserted.isEnforced, isTrue);
+
+      final retrievedDiscord = await repo.getLimitByAppName('Discord');
+      expect(retrievedDiscord, isNotNull);
+      expect(retrievedDiscord!.isEnforced, isTrue);
+
+      await repo.close();
+      await tempDir.delete(recursive: true);
+    });
+  });
+}
