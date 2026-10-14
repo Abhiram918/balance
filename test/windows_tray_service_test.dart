@@ -83,10 +83,12 @@ void main() {
 
     test('cleanShutdown invokes onShutdown callback and guards against duplicate execution', () async {
       int shutdownCalls = 0;
+      int exitCodeReceived = -1;
       final service = WindowsTrayService(
         onShutdown: () async {
           shutdownCalls++;
         },
+        exitHandler: (code) => exitCodeReceived = code,
         isPlatformSupported: false,
       );
 
@@ -96,6 +98,7 @@ void main() {
       // First shutdown attempt
       await service.cleanShutdown();
       expect(shutdownCalls, equals(1));
+      expect(exitCodeReceived, equals(0));
       expect(service.isShuttingDown, isTrue);
 
       // Second shutdown attempt should be a no-op

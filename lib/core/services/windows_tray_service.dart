@@ -24,6 +24,8 @@ class WindowsTrayService with TrayListener, WindowListener {
 
   DateTime? _lastTrayClickTime;
 
+  final void Function(int)? exitHandler;
+
   /// Visible for testing to override platform checks in unit tests.
   bool isPlatformSupported;
 
@@ -32,6 +34,7 @@ class WindowsTrayService with TrayListener, WindowListener {
     this.onRestore,
     this.onCloseToTray,
     this.doubleClickThreshold = const Duration(milliseconds: 500),
+    this.exitHandler,
     bool? isPlatformSupported,
   }) : isPlatformSupported = isPlatformSupported ?? Platform.isWindows;
 
@@ -131,7 +134,11 @@ class WindowsTrayService with TrayListener, WindowListener {
       }
     }
 
-    exit(0);
+    if (exitHandler != null) {
+      exitHandler!(0);
+    } else {
+      exit(0);
+    }
   }
 
   /// Handles mouse clicks on the tray icon to detect double-click events.
