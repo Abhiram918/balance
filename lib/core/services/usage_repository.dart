@@ -302,6 +302,20 @@ class UsageRepository {
     return maps.map((map) => FocusSessionRecord.fromMap(map)).toList();
   }
 
+  Future<List<FocusSessionRecord>> getFocusSessionsForRange(DateTime start, DateTime end) async {
+    final db = await database;
+    final maps = await db.query(
+      'FocusSessions',
+      where: 'startTime < ? AND endTime > ?',
+      whereArgs: [
+        end.millisecondsSinceEpoch,
+        start.millisecondsSinceEpoch,
+      ],
+      orderBy: 'startTime ASC',
+    );
+    return maps.map((map) => FocusSessionRecord.fromMap(map)).toList();
+  }
+
   Future<void> saveActiveFocusState(ActiveFocusState state) async {
     final db = await database;
     final map = state.toMap();

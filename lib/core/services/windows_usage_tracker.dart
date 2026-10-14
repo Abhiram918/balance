@@ -50,6 +50,20 @@ class WindowsUsageTracker extends ChangeNotifier {
   String? get currentAppName => _currentAppName;
   String? get currentExePath => _currentExePath;
 
+  /// Returns the currently active in-progress session, if tracking an active application.
+  AppSession? get liveSession {
+    if (_currentExePath != null && _sessionStartTime != null) {
+      return AppSession(
+        id: _currentSessionId,
+        appName: _currentAppName ?? 'Unknown',
+        exePath: _currentExePath!,
+        startTime: _sessionStartTime!,
+        endTime: _lastActiveTime,
+      );
+    }
+    return null;
+  }
+
   /// Updates the idle threshold duration (e.g. from Settings).
   void setIdleThreshold(Duration threshold) {
     if (_idleThreshold == threshold) return;
