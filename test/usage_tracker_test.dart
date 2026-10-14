@@ -13,7 +13,7 @@ void main() {
     late UsageRepository repository;
 
     setUp(() {
-      repository = UsageRepository();
+      repository = UsageRepository(dbName: inMemoryDatabasePath);
     });
 
     test('Transitions to idle, cuts off active session at lastInputTime, and does not count idle period', () async {

@@ -7,9 +7,17 @@ import '../models/app_limit.dart';
 
 class UsageRepository {
   final String dbName;
+  final String? baseDirectory;
+  final bool enableLegacyMigration;
+  final List<String>? legacyCandidates;
   Database? _db;
 
-  UsageRepository({this.dbName = 'usage.db'});
+  UsageRepository({
+    this.dbName = 'usage.db',
+    this.baseDirectory,
+    this.enableLegacyMigration = true,
+    this.legacyCandidates,
+  });
 
   Future<Database> get database async {
     if (_db != null) return _db!;
@@ -24,21 +32,296 @@ class UsageRepository {
     }
   }
 
+  /// Resolves the canonical directory for the SQLite database.
+  /// On Windows, this defaults to `%LOCALAPPDATA%\Balance`.
+  static String get defaultDatabaseDirectory {
+    if (Platform.isWindows) {
+      final localAppData = Platform.environment['LOCALAPPDATA'];
+      if (localAppData != null && localAppData.trim().isNotEmpty) {
+        return join(localAppData, 'Balance');
+      }
+      final appData = Platform.environment['APPDATA'];
+      if (appData != null && appData.trim().isNotEmpty) {
+        return join(appData, 'Balance');
+      }
+      final userProfile = Platform.environment['USERPROFILE'];
+      if (userProfile != null && userProfile.trim().isNotEmpty) {
+        return join(userProfile, 'AppData', 'Local', 'Balance');
+      }
+    } else if (Platform.isLinux) {
+      final xdgData = Platform.environment['XDG_DATA_HOME'];
+      if (xdgData != null && xdgData.trim().isNotEmpty) {
+        return join(xdgData, 'Balance');
+      }
+      final home = Platform.environment['HOME'];
+      if (home != null && home.trim().isNotEmpty) {
+        return join(home, '.local', 'share', 'Balance');
+      }
+    } else if (Platform.isMacOS) {
+      final home = Platform.environment['HOME'];
+      if (home != null && home.trim().isNotEmpty) {
+        return join(home, 'Library', 'Application Support', 'Balance');
+      }
+    }
+    return join(Directory.systemTemp.path, 'Balance');
+  }
+
+  /// Resolves the absolute database file path for [filePath] or [dbName].
+  Future<String> resolveDatabasePath([String? filePath]) async {
+    final name = filePath ?? dbName;
+    if (name == inMemoryDatabasePath) {
+      return inMemoryDatabasePath;
+    }
+    if (isAbsolute(name)) {
+      return name;
+    }
+    if (baseDirectory != null) {
+      return join(baseDirectory!, name);
+    }
+    if (name == 'usage.db') {
+      return join(defaultDatabaseDirectory, name);
+    }
+    final dbPath = await getDatabasesPath();
+    return join(dbPath, name);
+  }
+
+  /// Searches known locations where legacy development or early release databases were saved.
+  Future<List<File>> findLegacyDatabases([String? targetPath]) async {
+    if (legacyCandidates != null) {
+      final list = <File>[];
+      for (final p in legacyCandidates!) {
+        final f = File(p);
+        if (f.existsSync() && f.lengthSync() > 0) {
+          list.add(f);
+        }
+      }
+      return list;
+    }
+
+    final candidatePaths = <String>{};
+
+    // 1. sqflite default desktop databases path
+    try {
+      final defaultDbDir = await getDatabasesPath();
+      candidatePaths.add(join(defaultDbDir, 'usage.db'));
+    } catch (_) {}
+
+    // 2. Current working directory .dart_tool path
+    candidatePaths.add(
+      join(Directory.current.path, '.dart_tool', 'sqflite_common_ffi', 'databases', 'usage.db'),
+    );
+
+    // 3. Current working directory Release build output path
+    candidatePaths.add(
+      join(Directory.current.path, 'build', 'windows', 'x64', 'runner', 'Release', '.dart_tool', 'sqflite_common_ffi', 'databases', 'usage.db'),
+    );
+
+    // 4. Resolved executable directory and ancestors (up to 5 levels)
+    try {
+      var currentDir = File(Platform.resolvedExecutable).parent;
+      for (var i = 0; i < 5; i++) {
+        candidatePaths.add(
+          join(currentDir.path, '.dart_tool', 'sqflite_common_ffi', 'databases', 'usage.db'),
+        );
+        final parent = currentDir.parent;
+        if (parent.path == currentDir.path) break;
+        currentDir = parent;
+      }
+    } catch (_) {}
+
+    final results = <File>[];
+    final normalizedTarget = targetPath != null ? canonicalize(targetPath) : null;
+    final seenPaths = <String>{};
+
+    for (final p in candidatePaths) {
+      try {
+        final canon = canonicalize(p);
+        if (normalizedTarget != null && canon == normalizedTarget) {
+          continue;
+        }
+        if (!seenPaths.add(canon)) {
+          continue;
+        }
+        final file = File(p);
+        if (file.existsSync() && file.lengthSync() > 0) {
+          results.add(file);
+        }
+      } catch (_) {}
+    }
+
+    return results;
+  }
+
+  Future<void> _performPreOpenMigration(String targetPath) async {
+    try {
+      final targetFile = File(targetPath);
+      if (await targetFile.exists()) {
+        return;
+      }
+
+      final legacyFiles = await findLegacyDatabases(targetPath);
+      if (legacyFiles.isEmpty) return;
+
+      // Pick the legacy database with the largest file size
+      legacyFiles.sort((a, b) {
+        final lenA = a.existsSync() ? a.lengthSync() : 0;
+        final lenB = b.existsSync() ? b.lengthSync() : 0;
+        return lenB.compareTo(lenA);
+      });
+
+      final bestCandidate = legacyFiles.first;
+      if (await bestCandidate.exists() && bestCandidate.lengthSync() > 0) {
+        final targetDir = Directory(dirname(targetPath));
+        if (!await targetDir.exists()) {
+          await targetDir.create(recursive: true);
+        }
+        await bestCandidate.copy(targetPath);
+      }
+    } catch (_) {
+      // Safe fallback: never let migration errors block database initialization
+    }
+  }
+
+  Future<void> _performPostOpenMerge(Database db, String targetPath) async {
+    try {
+      // Check if legacy data was already imported
+      final settingRows = await db.query(
+        'Settings',
+        columns: ['value'],
+        where: 'key = ?',
+        whereArgs: ['legacy_data_imported'],
+        limit: 1,
+      );
+      if (settingRows.isNotEmpty && settingRows.first['value'] == 'true') {
+        return;
+      }
+
+      final legacyFiles = await findLegacyDatabases(targetPath);
+      final normalizedTarget = canonicalize(targetPath);
+
+      for (final legacyFile in legacyFiles) {
+        if (!await legacyFile.exists() || legacyFile.lengthSync() == 0) continue;
+        if (canonicalize(legacyFile.path) == normalizedTarget) continue;
+
+        try {
+          final legacyDb = await databaseFactory.openDatabase(
+            legacyFile.path,
+            options: OpenDatabaseOptions(readOnly: true),
+          );
+
+          await _mergeLegacyData(db, legacyDb);
+          await legacyDb.close();
+        } catch (_) {}
+      }
+
+      await db.insert(
+        'Settings',
+        {'key': 'legacy_data_imported', 'value': 'true'},
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    } catch (_) {
+      // Safe fallback: never throw unhandled exception
+    }
+  }
+
+  Future<void> _mergeLegacyData(Database targetDb, Database legacyDb) async {
+    // 1. AppSessions (deduplicate by appName, exePath, startTime, endTime)
+    try {
+      final legacySessions = await legacyDb.query('AppSessions');
+      for (final s in legacySessions) {
+        final existing = await targetDb.query(
+          'AppSessions',
+          where: 'appName = ? AND exePath = ? AND startTime = ? AND endTime = ?',
+          whereArgs: [s['appName'], s['exePath'], s['startTime'], s['endTime']],
+          limit: 1,
+        );
+        if (existing.isEmpty) {
+          await targetDb.insert('AppSessions', {
+            'appName': s['appName'],
+            'exePath': s['exePath'],
+            'startTime': s['startTime'],
+            'endTime': s['endTime'],
+          });
+        }
+      }
+    } catch (_) {}
+
+    // 2. Settings (only insert keys that do not exist yet)
+    try {
+      final legacySettings = await legacyDb.query('Settings');
+      for (final row in legacySettings) {
+        final key = row['key'] as String?;
+        if (key == null || key == 'legacy_data_imported') continue;
+        final existing = await targetDb.query('Settings', where: 'key = ?', whereArgs: [key], limit: 1);
+        if (existing.isEmpty) {
+          await targetDb.insert('Settings', row);
+        }
+      }
+    } catch (_) {}
+
+    // 3. FocusSessions (deduplicate by startTime, endTime)
+    try {
+      final legacyFocus = await legacyDb.query('FocusSessions');
+      for (final s in legacyFocus) {
+        final existing = await targetDb.query(
+          'FocusSessions',
+          where: 'startTime = ? AND endTime = ?',
+          whereArgs: [s['startTime'], s['endTime']],
+          limit: 1,
+        );
+        if (existing.isEmpty) {
+          await targetDb.insert('FocusSessions', {
+            'type': s['type'],
+            'plannedSeconds': s['plannedSeconds'],
+            'actualSeconds': s['actualSeconds'],
+            'startTime': s['startTime'],
+            'endTime': s['endTime'],
+            'completedNaturally': s['completedNaturally'],
+          });
+        }
+      }
+    } catch (_) {}
+
+    // 4. AppLimits (deduplicate by appName)
+    try {
+      final legacyLimits = await legacyDb.query('AppLimits');
+      for (final lim in legacyLimits) {
+        final appName = (lim['appName'] as String?)?.toLowerCase() ?? '';
+        if (appName.isEmpty) continue;
+        final existing = await targetDb.query(
+          'AppLimits',
+          where: 'LOWER(appName) = ?',
+          whereArgs: [appName],
+          limit: 1,
+        );
+        if (existing.isEmpty) {
+          final map = Map<String, dynamic>.from(lim)..remove('id');
+          await targetDb.insert('AppLimits', map);
+        }
+      }
+    } catch (_) {}
+  }
+
   Future<Database> _initDB(String filePath) async {
     if (Platform.isWindows || Platform.isLinux) {
       sqfliteFfiInit();
       databaseFactory = databaseFactoryFfi;
     }
 
-    final String path;
-    if (filePath == inMemoryDatabasePath) {
-      path = inMemoryDatabasePath;
-    } else {
-      final dbPath = await getDatabasesPath();
-      path = join(dbPath, filePath);
+    final path = await resolveDatabasePath(filePath);
+
+    if (path != inMemoryDatabasePath) {
+      final dir = Directory(dirname(path));
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+
+      if (enableLegacyMigration && (filePath == 'usage.db' || baseDirectory != null)) {
+        await _performPreOpenMigration(path);
+      }
     }
 
-    return await databaseFactory.openDatabase(
+    final db = await databaseFactory.openDatabase(
       path,
       options: OpenDatabaseOptions(
         version: 5,
@@ -46,6 +329,12 @@ class UsageRepository {
         onUpgrade: _onUpgradeDB,
       ),
     );
+
+    if (path != inMemoryDatabasePath && enableLegacyMigration && (filePath == 'usage.db' || baseDirectory != null)) {
+      await _performPostOpenMerge(db, path);
+    }
+
+    return db;
   }
 
   Future<void> _createDB(Database db, int version) async {
