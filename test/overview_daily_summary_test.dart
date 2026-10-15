@@ -15,6 +15,34 @@ import 'package:balance/core/widgets/daily_summary_card.dart';
 import 'package:balance/features/overview/overview_screen.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
+class MockWindowsUsageTracker extends WindowsUsageTracker {
+  bool _mockRunning = true;
+  final DailyUsageSummary? _mockSummary;
+
+  MockWindowsUsageTracker({
+    required super.repository,
+    DailyUsageSummary? summary,
+  }) : _mockSummary = summary;
+
+  @override
+  bool get isRunning => _mockRunning;
+
+  @override
+  DailyUsageSummary? get todaySummary => _mockSummary;
+
+  @override
+  void start() {
+    _mockRunning = true;
+    notifyListeners();
+  }
+
+  @override
+  Future<void> stop() async {
+    _mockRunning = false;
+    notifyListeners();
+  }
+}
+
 void main() {
   setUpAll(() {
     sqfliteFfiInit();
@@ -567,36 +595,6 @@ void main() {
 
   group('OverviewScreen Redesigned Dashboard Widget Tests', () {
     late UsageRepository repository;
-class MockWindowsUsageTracker extends WindowsUsageTracker {
-  bool _mockRunning = true;
-  DailyUsageSummary? _mockSummary;
-
-  MockWindowsUsageTracker({
-    required super.repository,
-    DailyUsageSummary? summary,
-  }) : _mockSummary = summary;
-
-  @override
-  bool get isRunning => _mockRunning;
-
-  @override
-  DailyUsageSummary? get todaySummary => _mockSummary;
-
-  @override
-  void start() {
-    _mockRunning = true;
-    notifyListeners();
-  }
-
-  @override
-  Future<void> stop() async {
-    _mockRunning = false;
-    notifyListeners();
-  }
-}
-
-  group('OverviewScreen Redesigned Dashboard Widget Tests', () {
-    late UsageRepository repository;
     late FocusService focusService;
 
     setUp(() async {
@@ -690,7 +688,7 @@ class MockWindowsUsageTracker extends WindowsUsageTracker {
       expect(find.text('Focus Time'), findsOneWidget);
       expect(find.text('Breaks'), findsOneWidget);
       expect(find.text('total today'), findsOneWidget);
-      expect(find.text('1h 58m'), findsOneWidget);
+      expect(find.text('1h 58m'), findsWidgets);
       expect(find.text('0h 0m'), findsOneWidget);
       expect(find.text('1'), findsOneWidget);
       expect(find.text('break today'), findsOneWidget);
