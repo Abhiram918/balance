@@ -31,6 +31,7 @@ void main() async {
   final tracker = WindowsUsageTracker(
     repository: repository,
     discoveryService: discoveryService,
+    focusService: focusService,
   );
   tracker.setIdleThreshold(Duration(minutes: settingsService.idleTimeoutMinutes.toInt()));
   await tracker.init();

@@ -1,5 +1,6 @@
 import 'dart:math';
 import '../models/app_session.dart';
+import '../models/focus_session.dart';
 import '../models/usage_data.dart';
 
 /// A time interval with start and end timestamps.
@@ -12,8 +13,25 @@ class TimeInterval {
   Duration get duration => end.difference(start);
 }
 
+/// Metrics derived from focus and break sessions for a specific day.
+class FocusDayMetrics {
+  final Duration focusTime;
+  final int breaksTaken;
+  final Duration breakDuration;
+  final List<TimeInterval> focusIntervals;
+  final List<TimeInterval> breakIntervals;
+
+  const FocusDayMetrics({
+    required this.focusTime,
+    required this.breaksTaken,
+    required this.breakDuration,
+    required this.focusIntervals,
+    required this.breakIntervals,
+  });
+}
+
 /// Pure helper for calculating daily screen time usage, application breakdowns,
-/// and hourly timelines mathematically consistently without double-counting.
+/// focus/break metrics, and hourly timelines mathematically consistently without double-counting.
 class UsageCalculator {
   /// Clamps an interval to the boundaries of [startOfDay, endOfDay).
   static TimeInterval? clampToDay(
@@ -52,6 +70,163 @@ class UsageCalculator {
     return merged;
   }
 
+  /// Subtracts [toSubtract] intervals from [source] intervals.
+  /// Returns a disjoint list of remaining intervals.
+  static List<TimeInterval> subtractIntervals(
+    List<TimeInterval> source,
+    List<TimeInterval> toSubtract,
+  ) {
+    if (source.isEmpty) return [];
+    if (toSubtract.isEmpty) return mergeIntervals(source);
+
+    final mergedSub = mergeIntervals(toSubtract);
+    List<TimeInterval> current = mergeIntervals(source);
+
+    for (final sub in mergedSub) {
+      final next = <TimeInterval>[];
+      for (final src in current) {
+        // No overlap
+        if (src.end.isBefore(sub.start) ||
+            src.start.isAfter(sub.end) ||
+            src.end == sub.start ||
+            src.start == sub.end) {
+          next.add(src);
+          continue;
+        }
+
+        // Sub completely covers src
+        if ((sub.start.isBefore(src.start) || sub.start == src.start) &&
+            (sub.end.isAfter(src.end) || sub.end == src.end)) {
+          continue;
+        }
+
+        // Sub is strictly inside src: splits src into two pieces
+        if (sub.start.isAfter(src.start) && sub.end.isBefore(src.end)) {
+          next.add(TimeInterval(src.start, sub.start));
+          next.add(TimeInterval(sub.end, src.end));
+          continue;
+        }
+
+        // Sub overlaps left edge of src
+        if (sub.start.isBefore(src.start) || sub.start == src.start) {
+          if (sub.end.isBefore(src.end)) {
+            next.add(TimeInterval(sub.end, src.end));
+          }
+          continue;
+        }
+
+        // Sub overlaps right edge of src
+        if (sub.end.isAfter(src.end) || sub.end == src.end) {
+          if (sub.start.isAfter(src.start)) {
+            next.add(TimeInterval(src.start, sub.start));
+          }
+          continue;
+        }
+      }
+      current = next;
+    }
+
+    return current;
+  }
+
+  /// Calculates total focus duration, break duration, break count, and intervals
+  /// for a given [date] from persisted [focusSessions] and an optional [activeState].
+  static FocusDayMetrics calculateFocusMetrics({
+    required DateTime date,
+    required List<FocusSessionRecord> focusSessions,
+    ActiveFocusState? activeState,
+    DateTime? now,
+  }) {
+    final startOfDay = DateTime(date.year, date.month, date.day);
+    final endOfDay = startOfDay.add(const Duration(days: 1));
+
+    final List<TimeInterval> focusIntervals = [];
+    final List<TimeInterval> breakIntervals = [];
+    int breaksCount = 0;
+
+    for (final session in focusSessions) {
+      final clamped = clampToDay(
+        session.startTime,
+        session.endTime,
+        startOfDay,
+        endOfDay,
+      );
+      if (clamped == null) continue;
+
+      // Ensure actual recorded duration is respected
+      final effectiveDuration = session.actualDuration < clamped.duration
+          ? session.actualDuration
+          : clamped.duration;
+      if (effectiveDuration <= Duration.zero) continue;
+
+      final interval = TimeInterval(
+        clamped.start,
+        clamped.start.add(effectiveDuration),
+      );
+
+      if (session.type == FocusSessionType.focus) {
+        focusIntervals.add(interval);
+      } else if (session.type == FocusSessionType.breakSession) {
+        breakIntervals.add(interval);
+        breaksCount++;
+      }
+    }
+
+    // Include currently running or paused active session if applicable
+    if (activeState != null &&
+        (activeState.status == FocusStatus.running ||
+            activeState.status == FocusStatus.paused)) {
+      final currentTime = now ?? DateTime.now();
+      Duration elapsed = Duration.zero;
+
+      if (activeState.status == FocusStatus.paused) {
+        elapsed = activeState.targetDuration - activeState.remainingDuration;
+      } else {
+        final diff = currentTime.difference(activeState.startTime);
+        elapsed = diff > activeState.targetDuration
+            ? activeState.targetDuration
+            : (diff.isNegative ? Duration.zero : diff);
+      }
+
+      if (elapsed > Duration.zero) {
+        final activeInterval = clampToDay(
+          activeState.startTime,
+          activeState.startTime.add(elapsed),
+          startOfDay,
+          endOfDay,
+        );
+        if (activeInterval != null) {
+          if (activeState.type == FocusSessionType.focus) {
+            focusIntervals.add(activeInterval);
+          } else if (activeState.type == FocusSessionType.breakSession) {
+            breakIntervals.add(activeInterval);
+            breaksCount++;
+          }
+        }
+      }
+    }
+
+    final mergedFocus = mergeIntervals(focusIntervals);
+    Duration totalFocus = Duration.zero;
+    for (final i in mergedFocus) {
+      totalFocus += i.duration;
+    }
+
+    final mergedBreaks = mergeIntervals(breakIntervals);
+    Duration totalBreaks = Duration.zero;
+    for (final i in mergedBreaks) {
+      totalBreaks += i.duration;
+    }
+
+    return FocusDayMetrics(
+      focusTime: totalFocus,
+      breaksTaken: breaksCount,
+      breakDuration: totalBreaks,
+      focusIntervals: mergedFocus,
+      breakIntervals: mergedBreaks,
+    );
+  }
+
   /// Calculates the 24 hourly activity buckets (each value in 0.0 - 1.0)
   /// by partitioning each interval across hour boundaries [00:00, 01:00, ..., 23:00].
   ///
@@ -86,19 +261,22 @@ class UsageCalculator {
     return hourlyActivity;
   }
 
-  /// Computes a complete [DailyUsageSummary] from a collection of raw [AppSession]s.
+  /// Computes a complete [DailyUsageSummary] from raw [AppSession]s and optional focus metrics.
   ///
   /// - Clamps sessions crossing midnight to the requested [date].
   /// - Merges overlapping intervals per app and globally to prevent double-counting.
   /// - Accurately distributes usage across all 24 hourly buckets.
-  /// - Maintains mathematical consistency: total active time matches the sum
-  ///   of disjoint active periods.
+  /// - Reconciles Focus, Breaks, and Other Usage without double-counting.
+  /// - Excludes Balance itself from top application rankings.
   static DailyUsageSummary calculateDailySummary({
     required DateTime date,
     required List<AppSession> sessions,
     Duration goalTime = const Duration(hours: 8),
     Duration focusTime = Duration.zero,
     int breaksTaken = 0,
+    Duration breakDuration = Duration.zero,
+    List<TimeInterval>? focusIntervals,
+    List<TimeInterval>? breakIntervals,
   }) {
     final startOfDay = DateTime(date.year, date.month, date.day);
     final endOfDay = startOfDay.add(const Duration(days: 1));
@@ -142,22 +320,50 @@ class UsageCalculator {
       ..sort((a, b) => b.value.compareTo(a.value));
 
     final List<AppUsageData> allApps = [];
+    final List<AppUsageData> userApps = [];
     final totalSeconds = totalActiveTime.inSeconds;
 
     for (final entry in sortedApps) {
-      allApps.add(
-        AppUsageData(
-          appName: entry.key,
-          duration: entry.value,
-          proportionalUsage: totalSeconds > 0
-              ? min(1.0, entry.value.inSeconds / totalSeconds)
-              : 0.0,
-        ),
+      final appUsage = AppUsageData(
+        appName: entry.key,
+        duration: entry.value,
+        proportionalUsage: totalSeconds > 0
+            ? min(1.0, entry.value.inSeconds / totalSeconds)
+            : 0.0,
       );
+      allApps.add(appUsage);
+
+      // Exclude Balance itself from user app ranking
+      if (entry.key.trim().toLowerCase() != 'balance') {
+        userApps.add(appUsage);
+      }
     }
 
-    final mostUsedApps = allApps.take(5).toList();
+    // Top applications for today (excluding Balance)
+    final mostUsedApps = userApps.take(5).toList();
     final hourlyActivity = calculateHourlyActivity(startOfDay, mergedGlobalIntervals);
+
+    // Calculate reconciled time breakdown for donut chart:
+    // Other Usage = recorded computer usage outside of Focus and Break intervals
+    final focusList = focusIntervals ?? [];
+    final breakList = breakIntervals ?? [];
+    final nonOtherIntervals = [...focusList, ...breakList];
+    final otherIntervals = subtractIntervals(mergedGlobalIntervals, nonOtherIntervals);
+
+    Duration otherUsageDuration = Duration.zero;
+    for (final i in otherIntervals) {
+      otherUsageDuration += i.duration;
+    }
+
+    // The total reconciled time is focus + breaks + other usage
+    final totalBreakdownUsage = focusTime + breakDuration + otherUsageDuration;
+
+    final breakdown = DailyTimeBreakdown(
+      totalUsage: totalBreakdownUsage,
+      focusDuration: focusTime,
+      breakDuration: breakDuration,
+      otherUsageDuration: otherUsageDuration,
+    );
 
     return DailyUsageSummary(
       date: date,
@@ -165,6 +371,8 @@ class UsageCalculator {
       goalTime: goalTime,
       focusTime: focusTime,
       breaksTaken: breaksTaken,
+      breakDuration: breakDuration,
+      timeBreakdown: breakdown,
       hourlyActivity: hourlyActivity,
       mostUsedApps: mostUsedApps,
       allApps: allApps,

@@ -4,7 +4,9 @@ import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
 import 'package:win32/win32.dart';
 import '../models/app_session.dart';
+import '../models/focus_session.dart';
 import '../models/usage_data.dart';
+import 'focus_service.dart';
 import 'usage_calculator.dart';
 import 'usage_repository.dart';
 import 'windows_app_discovery_service.dart';
@@ -12,6 +14,7 @@ import 'windows_app_discovery_service.dart';
 class WindowsUsageTracker extends ChangeNotifier {
   final UsageRepository repository;
   final WindowsAppDiscoveryService? discoveryService;
+  final FocusService? focusService;
 
   // Optional custom providers for unit testing without Windows FFI
   final Duration Function()? idleTimeProvider;
@@ -37,9 +40,16 @@ class WindowsUsageTracker extends ChangeNotifier {
   WindowsUsageTracker({
     required this.repository,
     this.discoveryService,
+    this.focusService,
     this.idleTimeProvider,
     this.foregroundWindowProvider,
-  });
+  }) {
+    focusService?.addListener(_onFocusServiceChanged);
+  }
+
+  void _onFocusServiceChanged() {
+    _refreshSummary();
+  }
 
   bool get isRunning => _isRunning;
   bool get hasError => _hasError;
@@ -299,6 +309,13 @@ class WindowsUsageTracker extends ChangeNotifier {
     return text[0].toUpperCase() + text.substring(1).toLowerCase();
   }
 
+  @override
+  void dispose() {
+    focusService?.removeListener(_onFocusServiceChanged);
+    _timer?.cancel();
+    super.dispose();
+  }
+
   Future<void> _refreshSummary() async {
     final now = DateTime.now();
     final sessions = await repository.getSessionsForDay(now);
@@ -327,9 +344,39 @@ class WindowsUsageTracker extends ChangeNotifier {
       }
     }
 
+    // Retrieve today's recorded focus & break sessions
+    final focusSessions = await repository.getFocusSessionsForDay(now);
+
+    // Extract active focus/break session state if running or paused
+    ActiveFocusState? activeFocus;
+    if (focusService != null && (focusService!.isRunning || focusService!.isPaused)) {
+      activeFocus = ActiveFocusState(
+        type: focusService!.sessionType,
+        status: focusService!.status,
+        targetDuration: focusService!.targetDuration,
+        startTime: focusService!.startTime ?? now,
+        expectedEndTime: focusService!.expectedEndTime ?? now,
+        remainingDuration: focusService!.remainingDuration,
+      );
+    } else {
+      activeFocus = await repository.getActiveFocusState();
+    }
+
+    final focusMetrics = UsageCalculator.calculateFocusMetrics(
+      date: now,
+      focusSessions: focusSessions,
+      activeState: activeFocus,
+      now: now,
+    );
+
     _todaySummary = UsageCalculator.calculateDailySummary(
       date: now,
       sessions: sessions,
+      focusTime: focusMetrics.focusTime,
+      breaksTaken: focusMetrics.breaksTaken,
+      breakDuration: focusMetrics.breakDuration,
+      focusIntervals: focusMetrics.focusIntervals,
+      breakIntervals: focusMetrics.breakIntervals,
     );
 
     notifyListeners();

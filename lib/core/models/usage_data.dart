@@ -26,12 +26,29 @@ class FocusSessionData {
   });
 }
 
+/// Reconciled time breakdown for today's donut chart and legend.
+class DailyTimeBreakdown {
+  final Duration totalUsage;
+  final Duration focusDuration;
+  final Duration breakDuration;
+  final Duration otherUsageDuration;
+
+  const DailyTimeBreakdown({
+    required this.totalUsage,
+    required this.focusDuration,
+    required this.breakDuration,
+    required this.otherUsageDuration,
+  });
+}
+
 class DailyUsageSummary {
   final DateTime date;
   final Duration totalActiveTime;
   final Duration goalTime;
   final Duration focusTime;
   final int breaksTaken;
+  final Duration breakDuration;
+  final DailyTimeBreakdown? timeBreakdown;
   final List<double> hourlyActivity; // 24 items, values 0.0 - 1.0
   final List<AppUsageData> mostUsedApps;
   final List<AppUsageData> allApps;
@@ -42,6 +59,8 @@ class DailyUsageSummary {
     required this.goalTime,
     required this.focusTime,
     required this.breaksTaken,
+    this.breakDuration = Duration.zero,
+    this.timeBreakdown,
     required this.hourlyActivity,
     required this.mostUsedApps,
     required this.allApps,
@@ -56,6 +75,13 @@ class DailyUsageSummary {
       goalTime: const Duration(hours: 6),
       focusTime: const Duration(hours: 2, minutes: 15),
       breaksTaken: 4,
+      breakDuration: const Duration(minutes: 20),
+      timeBreakdown: const DailyTimeBreakdown(
+        totalUsage: Duration(hours: 4, minutes: 23),
+        focusDuration: Duration(hours: 2, minutes: 15),
+        breakDuration: Duration(minutes: 20),
+        otherUsageDuration: Duration(hours: 1, minutes: 48),
+      ),
       hourlyActivity: [
         0, 0, 0, 0, 0, 0, // 0-5
         0, 0.1, 0.4, 0.8, 0.6, 0.3, // 6-11

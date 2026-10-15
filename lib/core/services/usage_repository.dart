@@ -605,6 +605,12 @@ class UsageRepository {
     return maps.map((map) => FocusSessionRecord.fromMap(map)).toList();
   }
 
+  Future<List<FocusSessionRecord>> getFocusSessionsForDay(DateTime date) async {
+    final startOfDay = DateTime(date.year, date.month, date.day);
+    final endOfDay = DateTime(date.year, date.month, date.day + 1);
+    return getFocusSessionsForRange(startOfDay, endOfDay);
+  }
+
   Future<void> saveActiveFocusState(ActiveFocusState state) async {
     final db = await database;
     final map = state.toMap();
