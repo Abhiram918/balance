@@ -365,6 +365,13 @@ class UsageCalculator {
       otherUsageDuration: otherUsageDuration,
     );
 
+    // Calculate daily activity statistics (most active hour, unique apps, longest session)
+    final dailyActivity = calculateDailyActivityMetrics(
+      date: date,
+      sessions: sessions,
+      hourlyActivity: hourlyActivity,
+    );
+
     return DailyUsageSummary(
       date: date,
       totalActiveTime: totalActiveTime,
@@ -373,9 +380,86 @@ class UsageCalculator {
       breaksTaken: breaksTaken,
       breakDuration: breakDuration,
       timeBreakdown: breakdown,
+      dailyActivity: dailyActivity,
       hourlyActivity: hourlyActivity,
       mostUsedApps: mostUsedApps,
       allApps: allApps,
+    );
+  }
+
+  /// Formats an hour index 0..23 into a 12-hour span, e.g. "12:00 – 1:00 PM".
+  static String formatHourRange(int hour) {
+    final startHour = hour % 12 == 0 ? 12 : hour % 12;
+    final startAmPm = hour < 12 ? 'AM' : 'PM';
+    final nextHourRaw = (hour + 1) % 24;
+    final nextHour = nextHourRaw % 12 == 0 ? 12 : nextHourRaw % 12;
+    final nextAmPm = nextHourRaw < 12 ? 'AM' : 'PM';
+    if (startAmPm == nextAmPm) {
+      return '$startHour:00 – $nextHour:00 $nextAmPm';
+    } else {
+      return '$startHour:00 $startAmPm – $nextHour:00 $nextAmPm';
+    }
+  }
+
+  /// Calculates Daily Activity metrics: most active hour, unique applications count,
+  /// and longest continuous session duration & app name.
+  static DailyActivityMetrics calculateDailyActivityMetrics({
+    required DateTime date,
+    required List<AppSession> sessions,
+    List<double>? hourlyActivity,
+  }) {
+    final startOfDay = DateTime(date.year, date.month, date.day);
+    final endOfDay = startOfDay.add(const Duration(days: 1));
+
+    final effectiveHourly = hourlyActivity ?? () {
+      final intervals = <TimeInterval>[];
+      for (final s in sessions) {
+        if (s.appName.trim().toLowerCase() == 'balance') continue;
+        final sStart = s.startTime.isBefore(startOfDay) ? startOfDay : s.startTime;
+        final sEnd = s.endTime.isAfter(endOfDay) ? endOfDay : s.endTime;
+        if (sEnd.isAfter(sStart)) {
+          intervals.add(TimeInterval(sStart, sEnd));
+        }
+      }
+      return calculateHourlyActivity(startOfDay, mergeIntervals(intervals));
+    }();
+
+    // 1. Most active hour
+    int maxHour = -1;
+    double maxActivity = 0.0;
+    for (int h = 0; h < effectiveHourly.length; h++) {
+      if (effectiveHourly[h] > maxActivity) {
+        maxActivity = effectiveHourly[h];
+        maxHour = h;
+      }
+    }
+    final mostActiveHourText = maxHour >= 0 && maxActivity > 0.0
+        ? formatHourRange(maxHour)
+        : '12:00 – 1:00 PM';
+
+    // 2. Distinct applications used today (excluding Balance) & Longest continuous session
+    final Set<String> uniqueApps = {};
+    AppSession? longestSession;
+    Duration longestDuration = Duration.zero;
+
+    for (final s in sessions) {
+      if (s.appName.trim().toLowerCase() == 'balance') continue;
+      final clamped = clampToDay(s.startTime, s.endTime, startOfDay, endOfDay);
+      if (clamped == null || clamped.duration <= Duration.zero) continue;
+
+      uniqueApps.add(s.appName);
+
+      if (clamped.duration > longestDuration) {
+        longestDuration = clamped.duration;
+        longestSession = s;
+      }
+    }
+
+    return DailyActivityMetrics(
+      mostActiveHourText: mostActiveHourText,
+      distinctAppsCount: uniqueApps.length,
+      longestSessionDuration: longestDuration,
+      longestSessionAppName: longestSession?.appName ?? 'None',
     );
   }
 }

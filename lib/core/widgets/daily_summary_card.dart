@@ -5,14 +5,12 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../../app/theme/app_colors.dart';
 import '../../app/theme/app_spacing.dart';
 import '../models/usage_data.dart';
-import 'app_shell.dart';
 
-/// Clean, data-driven Daily Summary card replacing the legacy Overview screen time tile.
-///
-/// Features:
-/// - Prominent total computer usage figure and daily screen time goal progress.
-/// - Donut chart and legend for Focus, Breaks, and Other Usage without double-counting.
-/// - Top Applications list with proportional progress bars and View All action.
+/// Daily Summary card reproducing the reference image design:
+/// - Donut chart with total screen time in the center.
+/// - Legend with Other Usage, Break Time, and Focus Sessions (durations and percentages).
+/// - Vertical divider.
+/// - Daily goal section with target icon, progress bar, percentage, and remaining time.
 class DailySummaryCard extends StatelessWidget {
   final DailyUsageSummary data;
 
@@ -29,14 +27,14 @@ class DailySummaryCard extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: colors.surface,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: colors.surfaceSecondary.withValues(alpha: 0.6),
+          color: colors.surfaceSecondary.withValues(alpha: 0.7),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 16,
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 12,
             offset: const Offset(0, 4),
           ),
         ],
@@ -46,24 +44,14 @@ class DailySummaryCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildHeader(context, colors),
-          const SizedBox(height: AppSpacing.lg),
-          _buildUsageHero(context, colors),
           const SizedBox(height: AppSpacing.xl),
-          _buildBreakdownSection(context, colors),
-          const SizedBox(height: AppSpacing.xl),
-          Divider(
-            height: 1,
-            thickness: 1,
-            color: colors.surfaceSecondary.withValues(alpha: 0.6),
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          _buildTopApplicationsSection(context, colors),
+          _buildBody(context, colors),
         ],
       ),
     );
   }
 
-  /// Card Header with Title and "Today" badge
+  /// Card Header with Chart Icon, Title, Subtitle, and Date Selector Pill
   Widget _buildHeader(BuildContext context, AppThemeColors colors) {
     final theme = Theme.of(context);
 
@@ -72,109 +60,79 @@ class DailySummaryCard extends StatelessWidget {
       children: [
         Row(
           children: [
-            Icon(
-              LucideIcons.barChart2,
-              size: 20,
-              color: colors.primaryAccent,
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            Text(
-              'Daily Summary',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: colors.textPrimary,
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: const Color(0xFFEFF6FF),
+                borderRadius: BorderRadius.circular(10),
               ),
-            ),
-          ],
-        ),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          decoration: BoxDecoration(
-            color: colors.primaryAccent.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Text(
-            'Today',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: colors.primaryAccent,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// Prominent Total Usage figure and goal progress bar
-  Widget _buildUsageHero(BuildContext context, AppThemeColors colors) {
-    final theme = Theme.of(context);
-    final total = data.totalActiveTime;
-    final hours = total.inHours;
-    final minutes = total.inMinutes.remainder(60);
-
-    final goalMinutes = data.goalTime.inMinutes > 0 ? data.goalTime.inMinutes : 480;
-    final progressFraction = (total.inMinutes / goalMinutes).clamp(0.0, 1.0);
-    final percentage = (progressFraction * 100).toInt();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.baseline,
-          textBaseline: TextBaseline.alphabetic,
-          children: [
-            Text(
-              '${hours}h ${minutes.toString().padLeft(2, '0')}m',
-              style: theme.textTheme.displaySmall?.copyWith(
-                fontWeight: FontWeight.w800,
-                fontSize: 36,
-                letterSpacing: -0.5,
-                color: colors.textPrimary,
-              ),
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            Text(
-              'total screen time',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: colors.textSecondary,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        Row(
-          children: [
-            Expanded(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: LinearProgressIndicator(
-                  value: progressFraction,
-                  minHeight: 8,
-                  backgroundColor: colors.surfaceSecondary,
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    progressFraction >= 1.0 ? Colors.amber.shade600 : colors.primaryAccent,
-                  ),
-                ),
+              child: const Icon(
+                LucideIcons.barChart2,
+                color: Color(0xFF2563EB),
+                size: 20,
               ),
             ),
             const SizedBox(width: AppSpacing.md),
-            Text(
-              '$percentage% of ${data.goalTime.inHours}h goal',
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: colors.textSecondary,
-              ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Daily Summary',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 18,
+                    color: colors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Your computer usage and activity for today',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colors.textSecondary,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
             ),
           ],
+        ),
+        // Dropdown pill: Today ∨
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+          decoration: BoxDecoration(
+            color: colors.surface,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: colors.surfaceSecondary,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Today',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: colors.textPrimary,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Icon(
+                LucideIcons.chevronDown,
+                size: 15,
+                color: colors.textSecondary,
+              ),
+            ],
+          ),
         ),
       ],
     );
   }
 
-  /// Time Breakdown: Donut Chart on left, Legend on right
-  Widget _buildBreakdownSection(BuildContext context, AppThemeColors colors) {
+  /// Body containing: Donut Chart, Legend, Vertical Divider, and Goal Progress Box
+  Widget _buildBody(BuildContext context, AppThemeColors colors) {
     final theme = Theme.of(context);
     final breakdown = data.timeBreakdown;
 
@@ -184,125 +142,234 @@ class DailySummaryCard extends StatelessWidget {
         max(0, data.totalActiveTime.inSeconds - focusSec - breakSec);
     final totalSec = focusSec + breakSec + otherSec;
 
-    final hasData = totalSec > 0;
+    final total = data.totalActiveTime;
+    final totalHours = total.inHours;
+    final totalMins = total.inMinutes.remainder(60);
 
-    // Palette: Focus (Primary Indigo), Breaks (Emerald Green), Other Usage (Sky Blue)
-    final focusColor = colors.primaryAccent;
-    const breakColor = Color(0xFF10B981); // Emerald Mint
-    const otherColor = Color(0xFF38BDF8); // Sky Blue
+    // Goal calculation
+    final goalMinutes = data.goalTime.inMinutes > 0 ? data.goalTime.inMinutes : 480;
+    final progressFraction = (total.inMinutes / goalMinutes).clamp(0.0, 1.0);
+    final goalPercentage = (progressFraction * 100).toInt();
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        // Donut Chart
-        SizedBox(
-          width: 130,
-          height: 130,
-          child: hasData
-              ? PieChart(
-                  PieChartData(
-                    sectionsSpace: 2,
-                    centerSpaceRadius: 36,
-                    startDegreeOffset: -90,
-                    sections: [
-                      if (focusSec > 0)
-                        PieChartSectionData(
-                          color: focusColor,
-                          value: focusSec.toDouble(),
-                          title: '',
-                          radius: 18,
-                        ),
-                      if (breakSec > 0)
-                        PieChartSectionData(
-                          color: breakColor,
-                          value: breakSec.toDouble(),
-                          title: '',
-                          radius: 18,
-                        ),
-                      if (otherSec > 0)
-                        PieChartSectionData(
-                          color: otherColor,
-                          value: otherSec.toDouble(),
-                          title: '',
-                          radius: 18,
-                        ),
-                    ],
+    final remainingDuration = data.goalTime > total ? (data.goalTime - total) : Duration.zero;
+    final remHours = remainingDuration.inHours;
+    final remMins = remainingDuration.inMinutes.remainder(60);
+    final remainingText = '${remHours}h ${remMins}m remaining';
+
+    // Color definitions from reference image
+    const otherUsageColor = Color(0xFF00A3FF); // Vibrant Sky Blue
+    const breakColor = Color(0xFFA855F7);      // Magenta/Purple
+    const focusColor = Color(0xFF10B981);      // Emerald/Mint Green
+
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // 1. Donut Chart with total inside
+          SizedBox(
+            width: 148,
+            height: 148,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                if (totalSec > 0)
+                  PieChart(
+                    PieChartData(
+                      sectionsSpace: 2.5,
+                      centerSpaceRadius: 46,
+                      startDegreeOffset: -90,
+                      sections: [
+                        if (otherSec > 0)
+                          PieChartSectionData(
+                            color: otherUsageColor,
+                            value: otherSec.toDouble(),
+                            title: '',
+                            radius: 18,
+                          ),
+                        if (breakSec > 0)
+                          PieChartSectionData(
+                            color: breakColor,
+                            value: breakSec.toDouble(),
+                            title: '',
+                            radius: 18,
+                          ),
+                        if (focusSec > 0)
+                          PieChartSectionData(
+                            color: focusColor,
+                            value: focusSec.toDouble(),
+                            title: '',
+                            radius: 18,
+                          ),
+                      ],
+                    ),
+                  )
+                else
+                  CircularProgressIndicator(
+                    value: 1.0,
+                    strokeWidth: 16,
+                    color: colors.surfaceSecondary,
                   ),
-                )
-              : Center(
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      SizedBox(
-                        width: 90,
-                        height: 90,
-                        child: CircularProgressIndicator(
-                          value: 1.0,
-                          strokeWidth: 10,
-                          color: colors.surfaceSecondary,
-                        ),
+                // Center text
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '${totalHours}h ${totalMins}m',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
+                        color: colors.textPrimary,
+                        letterSpacing: -0.3,
                       ),
-                      Icon(
-                        LucideIcons.clock,
-                        size: 24,
-                        color: colors.textSecondary.withValues(alpha: 0.5),
+                    ),
+                    Text(
+                      'total',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontSize: 11,
+                        color: colors.textSecondary,
+                        fontWeight: FontWeight.w500,
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-        ),
-        const SizedBox(width: AppSpacing.xl),
+              ],
+            ),
+          ),
+          const SizedBox(width: AppSpacing.xl),
 
-        // Legend with exact durations and percentages
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildLegendRow(
-                context: context,
-                colors: colors,
-                color: focusColor,
-                label: 'Focus Sessions',
-                duration: Duration(seconds: focusSec),
-                totalSeconds: totalSec,
+          // 2. Legend
+          Expanded(
+            flex: 5,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildLegendItem(
+                  context: context,
+                  colors: colors,
+                  color: otherUsageColor,
+                  label: 'Other Usage',
+                  duration: Duration(seconds: otherSec),
+                  totalSeconds: totalSec,
+                ),
+                const SizedBox(height: AppSpacing.md),
+                _buildLegendItem(
+                  context: context,
+                  colors: colors,
+                  color: breakColor,
+                  label: 'Break Time',
+                  duration: Duration(seconds: breakSec),
+                  totalSeconds: totalSec,
+                ),
+                const SizedBox(height: AppSpacing.md),
+                _buildLegendItem(
+                  context: context,
+                  colors: colors,
+                  color: focusColor,
+                  label: 'Focus Sessions',
+                  duration: Duration(seconds: focusSec),
+                  totalSeconds: totalSec,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: AppSpacing.lg),
+
+          // 3. Vertical Divider
+          VerticalDivider(
+            width: 1,
+            thickness: 1,
+            color: colors.surfaceSecondary.withValues(alpha: 0.8),
+          ),
+          const SizedBox(width: AppSpacing.lg),
+
+          // 4. Daily Goal Box
+          Expanded(
+            flex: 4,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: colors.surfaceSecondary.withValues(alpha: 0.5),
+                ),
               ),
-              const SizedBox(height: AppSpacing.sm),
-              _buildLegendRow(
-                context: context,
-                colors: colors,
-                color: breakColor,
-                label: 'Break Time',
-                duration: Duration(seconds: breakSec),
-                totalSeconds: totalSec,
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              _buildLegendRow(
-                context: context,
-                colors: colors,
-                color: otherColor,
-                label: 'Other Usage',
-                duration: Duration(seconds: otherSec),
-                totalSeconds: totalSec,
-              ),
-              if (!hasData)
-                Padding(
-                  padding: const EdgeInsets.only(top: AppSpacing.sm),
-                  child: Text(
-                    'No activity recorded today',
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 28,
+                        height: 28,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEFF6FF),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          LucideIcons.target,
+                          size: 15,
+                          color: Color(0xFF2563EB),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '${data.goalTime.inHours}h goal',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: colors.textPrimary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: LinearProgressIndicator(
+                            value: progressFraction,
+                            minHeight: 7,
+                            backgroundColor: const Color(0xFFE2E8F0),
+                            valueColor: const AlwaysStoppedAnimation<Color>(
+                              Color(0xFF2563EB),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '$goalPercentage%',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: colors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    remainingText,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: colors.textSecondary,
-                      fontStyle: FontStyle.italic,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
-                ),
-            ],
+                ],
+              ),
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
-  Widget _buildLegendRow({
+  Widget _buildLegendItem({
     required BuildContext context,
     required AppThemeColors colors,
     required Color color,
@@ -318,179 +385,46 @@ class DailySummaryCard extends StatelessWidget {
     return Row(
       children: [
         Container(
-          width: 10,
-          height: 10,
+          width: 8,
+          height: 8,
           decoration: BoxDecoration(
             color: color,
             shape: BoxShape.circle,
           ),
         ),
-        const SizedBox(width: AppSpacing.sm),
+        const SizedBox(width: 8),
         Expanded(
           child: Text(
             label,
-            style: theme.textTheme.bodyMedium?.copyWith(
+            style: theme.textTheme.bodySmall?.copyWith(
               color: colors.textPrimary,
-              fontWeight: FontWeight.w500,
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
             ),
           ),
         ),
         Text(
           _formatDuration(duration),
-          style: theme.textTheme.bodyMedium?.copyWith(
-            fontWeight: FontWeight.bold,
+          style: theme.textTheme.bodySmall?.copyWith(
+            fontWeight: FontWeight.w700,
             color: colors.textPrimary,
+            fontSize: 13,
           ),
         ),
-        const SizedBox(width: AppSpacing.sm),
+        const SizedBox(width: 8),
         SizedBox(
-          width: 36,
+          width: 32,
           child: Text(
             '$percentage%',
             textAlign: TextAlign.end,
             style: theme.textTheme.bodySmall?.copyWith(
               color: colors.textSecondary,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
             ),
           ),
         ),
       ],
-    );
-  }
-
-  /// Top Applications List with Proportional Progress Bars
-  Widget _buildTopApplicationsSection(BuildContext context, AppThemeColors colors) {
-    final theme = Theme.of(context);
-    final apps = data.mostUsedApps;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'Top Applications',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: colors.textPrimary,
-              ),
-            ),
-            TextButton(
-              onPressed: () {
-                AppNavigation.of(context).navigateTo(1);
-              },
-              style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                minimumSize: Size.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('View All'),
-                  SizedBox(width: 4),
-                  Icon(LucideIcons.chevronRight, size: 14),
-                ],
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        if (apps.isEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
-            child: Row(
-              children: [
-                Icon(
-                  LucideIcons.info,
-                  size: 16,
-                  color: colors.textSecondary.withValues(alpha: 0.6),
-                ),
-                const SizedBox(width: AppSpacing.sm),
-                Text(
-                  'No application usage recorded today.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: colors.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-          )
-        else
-          ...apps.take(3).map((app) => _buildAppRow(context, colors, app)),
-      ],
-    );
-  }
-
-  Widget _buildAppRow(
-    BuildContext context,
-    AppThemeColors colors,
-    AppUsageData app,
-  ) {
-    final theme = Theme.of(context);
-    final totalActiveSec = data.totalActiveTime.inSeconds;
-    final proportion = totalActiveSec > 0
-        ? (app.duration.inSeconds / totalActiveSec).clamp(0.0, 1.0)
-        : 0.0;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 24,
-                height: 24,
-                decoration: BoxDecoration(
-                  color: colors.primaryAccent.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  app.appName.isNotEmpty ? app.appName[0].toUpperCase() : '?',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: colors.primaryAccent,
-                  ),
-                ),
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              Expanded(
-                child: Text(
-                  app.appName,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: colors.textPrimary,
-                  ),
-                ),
-              ),
-              Text(
-                _formatDuration(app.duration),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: colors.textSecondary,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(3),
-            child: LinearProgressIndicator(
-              value: proportion,
-              minHeight: 4,
-              backgroundColor: colors.surfaceSecondary.withValues(alpha: 0.5),
-              valueColor: AlwaysStoppedAnimation<Color>(
-                colors.primaryAccent.withValues(alpha: 0.75),
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 

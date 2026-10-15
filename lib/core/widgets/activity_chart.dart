@@ -13,11 +13,13 @@ import '../../app/theme/app_spacing.dart';
 class ActivityChart extends StatelessWidget {
   final List<double> hourlyData;
   final int? currentHour;
+  final bool showLegend;
 
   const ActivityChart({
     super.key,
     required this.hourlyData,
     this.currentHour,
+    this.showLegend = true,
   });
 
   @override
@@ -32,18 +34,18 @@ class ActivityChart extends StatelessWidget {
       final isPastOrCurrent = index <= nowHour;
       final isActive = value > 0.0;
 
-      // Color selection
+      // Color selection matching reference image
       final Color barColor = isActive
-          ? colors.primaryAccent
+          ? const Color(0xFF2563EB)
           : (isPastOrCurrent
-              ? colors.surfaceSecondary.withValues(alpha: 0.5)
-              : colors.surfaceSecondary.withValues(alpha: 0.2));
+              ? const Color(0xFF93C5FD)
+              : Colors.transparent);
 
       // Bar height: if active, actual value (at least 0.04 so very short sessions are visible);
-      // if inactive past hour, a tiny baseline tick (0.015); if future hour, 0.0
+      // if inactive past hour, a tiny baseline dot (0.018); if future hour, 0.0
       final double rodHeight = isActive
           ? (value < 0.04 ? 0.04 : value)
-          : (isPastOrCurrent ? 0.015 : 0.0);
+          : (isPastOrCurrent ? 0.018 : 0.0);
 
       return BarChartGroupData(
         x: index,
@@ -54,23 +56,16 @@ class ActivityChart extends StatelessWidget {
             width: 7,
             borderRadius: BorderRadius.circular(3),
             backDrawRodData: BackgroundBarChartRodData(
-              show: isPastOrCurrent,
-              toY: 1.0,
-              color: colors.surfaceSecondary.withValues(alpha: 0.15),
+              show: false,
             ),
           ),
         ],
       );
     });
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildLegend(context, colors),
-        const SizedBox(height: AppSpacing.md),
-        SizedBox(
-          height: 180,
-          child: BarChart(
+    final chartWidget = SizedBox(
+      height: 180,
+      child: BarChart(
             BarChartData(
               alignment: BarChartAlignment.spaceAround,
               maxY: 1.0,
@@ -130,21 +125,21 @@ class ActivityChart extends StatelessWidget {
                     showTitles: true,
                     getTitlesWidget: (value, meta) {
                       final intHour = value.toInt();
-                      if (intHour % 4 != 0) return const SizedBox.shrink();
+                      if (intHour % 2 != 0) return const SizedBox.shrink();
 
                       return Padding(
-                        padding: const EdgeInsets.only(top: AppSpacing.sm),
+                        padding: const EdgeInsets.only(top: 6),
                         child: Text(
                           '${intHour.toString().padLeft(2, '0')}:00',
-                          style: theme.textTheme.labelLarge?.copyWith(
-                            color: colors.textSecondary,
-                            fontSize: 11,
+                          style: TextStyle(
+                            color: colors.textSecondary.withValues(alpha: 0.8),
+                            fontSize: 10,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
                       );
                     },
-                    reservedSize: 28,
+                    reservedSize: 24,
                   ),
                 ),
                 leftTitles: AxisTitles(
@@ -200,7 +195,18 @@ class ActivityChart extends StatelessWidget {
               barGroups: barGroups,
             ),
           ),
-        ),
+        );
+
+    if (!showLegend) {
+      return chartWidget;
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildLegend(context, colors),
+        const SizedBox(height: AppSpacing.md),
+        chartWidget,
       ],
     );
   }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:balance/app/app.dart';
 import 'package:balance/app/theme/app_theme.dart';
 import 'package:balance/core/models/app_session.dart';
 import 'package:balance/core/models/focus_session.dart';
@@ -9,7 +10,10 @@ import 'package:balance/core/services/focus_service.dart';
 import 'package:balance/core/services/usage_calculator.dart';
 import 'package:balance/core/services/usage_repository.dart';
 import 'package:balance/core/services/windows_usage_tracker.dart';
+import 'package:balance/core/widgets/app_shell.dart';
 import 'package:balance/core/widgets/daily_summary_card.dart';
+import 'package:balance/features/overview/overview_screen.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 
 void main() {
   setUpAll(() {
@@ -349,6 +353,49 @@ void main() {
       expect(activeSummary.hourlyActivity[13], equals(0.0));
       expect(activeSummary.hourlyActivity[15], equals(0.0));
     });
+    test('11. DailyActivityMetrics computes most active hour, unique apps excluding Balance, and longest session', () {
+      final sessions = [
+        AppSession(
+          appName: 'Balance',
+          exePath: r'C:\Balance\balance.exe',
+          startTime: DateTime(2026, 10, 15, 8, 0),
+          endTime: DateTime(2026, 10, 15, 10, 0), // 2h (excluded from apps count)
+        ),
+        AppSession(
+          appName: 'Microsoft Edge',
+          exePath: r'C:\edge.exe',
+          startTime: DateTime(2026, 10, 15, 12, 10),
+          endTime: DateTime(2026, 10, 15, 12, 52), // 42m session in hour 12
+        ),
+        AppSession(
+          appName: 'Google Chrome',
+          exePath: r'C:\chrome.exe',
+          startTime: DateTime(2026, 10, 15, 12, 0),
+          endTime: DateTime(2026, 10, 15, 12, 20), // 20m in hour 12
+        ),
+        AppSession(
+          appName: 'WhatsApp',
+          exePath: r'C:\whatsapp.exe',
+          startTime: DateTime(2026, 10, 15, 14, 0),
+          endTime: DateTime(2026, 10, 15, 14, 21), // 21m in hour 14
+        ),
+      ];
+
+      final metrics = UsageCalculator.calculateDailyActivityMetrics(
+        date: testDate,
+        sessions: sessions,
+      );
+
+      // Distinct apps: Edge, Chrome, WhatsApp = 3 (Balance is excluded)
+      expect(metrics.distinctAppsCount, equals(3));
+
+      // Most active hour: Hour 12 (12:00 - 1:00 PM)
+      expect(metrics.mostActiveHourText, equals('12:00 – 1:00 PM'));
+
+      // Longest session: Microsoft Edge with 42 minutes
+      expect(metrics.longestSessionDuration, equals(const Duration(minutes: 42)));
+      expect(metrics.longestSessionAppName, equals('Microsoft Edge'));
+    });
   });
 
   group('Tracking & Focus Mode Lifecycle Separation Tests', () {
@@ -358,7 +405,7 @@ void main() {
       repository = UsageRepository(dbName: inMemoryDatabasePath);
     });
 
-    test('11. Pausing tracking stops new usage recording and resuming tracking restarts it without duplicate sessions', () async {
+    test('12. Pausing tracking stops new usage recording and resuming tracking restarts it without duplicate sessions', () async {
       String? currentWindow = r'C:\app.exe';
 
       final tracker = WindowsUsageTracker(
@@ -389,7 +436,7 @@ void main() {
       expect(tracker.isRunning, isFalse);
     });
 
-    test('12. Focus sessions are not unintentionally altered by pausing usage tracking', () async {
+    test('13. Focus sessions are not unintentionally altered by pausing usage tracking', () async {
       final focusService = FocusService(repository: repository);
       await focusService.init();
 
@@ -422,7 +469,7 @@ void main() {
   });
 
   group('DailySummaryCard Widget Tests', () {
-    testWidgets('13. Renders Daily Summary card with real metrics and handles empty state gracefully', (tester) async {
+    testWidgets('14. Renders Daily Summary card with real metrics and handles empty state gracefully', (tester) async {
       final summary = DailyUsageSummary(
         date: DateTime(2026, 10, 15),
         totalActiveTime: const Duration(hours: 3, minutes: 20),
@@ -467,9 +514,9 @@ void main() {
       expect(find.text('Daily Summary'), findsOneWidget);
       expect(find.text('Today'), findsOneWidget);
 
-      // Verify Hero Screen Time
+      // Verify Center Screen Time
       expect(find.text('3h 20m'), findsOneWidget);
-      expect(find.text('total screen time'), findsOneWidget);
+      expect(find.text('total'), findsOneWidget);
       expect(find.textContaining('8h goal'), findsOneWidget);
 
       // Verify Breakdown legend labels
@@ -479,12 +526,6 @@ void main() {
       expect(find.text('50m'), findsOneWidget);
       expect(find.text('15m'), findsOneWidget);
       expect(find.text('2h 15m'), findsOneWidget);
-
-      // Verify Top Applications
-      expect(find.text('Top Applications'), findsOneWidget);
-      expect(find.text('Chrome'), findsOneWidget);
-      expect(find.text('VS Code'), findsOneWidget);
-      expect(find.text('View All'), findsOneWidget);
     });
 
     testWidgets('Renders empty state neutral text without crashing when usage is zero', (tester) async {
@@ -517,9 +558,194 @@ void main() {
         ),
       );
 
-      expect(find.text('0h 00m'), findsOneWidget);
-      expect(find.text('No activity recorded today'), findsOneWidget);
-      expect(find.text('No application usage recorded today.'), findsOneWidget);
+      expect(find.text('0h 0m'), findsOneWidget);
+      expect(find.text('total'), findsOneWidget);
+      expect(find.text('8h goal'), findsOneWidget);
+      expect(find.text('8h 0m remaining'), findsOneWidget);
+    });
+  });
+
+  group('OverviewScreen Redesigned Dashboard Widget Tests', () {
+    late UsageRepository repository;
+class MockWindowsUsageTracker extends WindowsUsageTracker {
+  bool _mockRunning = true;
+  DailyUsageSummary? _mockSummary;
+
+  MockWindowsUsageTracker({
+    required super.repository,
+    DailyUsageSummary? summary,
+  }) : _mockSummary = summary;
+
+  @override
+  bool get isRunning => _mockRunning;
+
+  @override
+  DailyUsageSummary? get todaySummary => _mockSummary;
+
+  @override
+  void start() {
+    _mockRunning = true;
+    notifyListeners();
+  }
+
+  @override
+  Future<void> stop() async {
+    _mockRunning = false;
+    notifyListeners();
+  }
+}
+
+  group('OverviewScreen Redesigned Dashboard Widget Tests', () {
+    late UsageRepository repository;
+    late FocusService focusService;
+
+    setUp(() async {
+      repository = UsageRepository(dbName: inMemoryDatabasePath);
+      focusService = FocusService(repository: repository);
+      await focusService.init();
+    });
+
+    tearDown(() async {
+      focusService.dispose();
+      await repository.close();
+    });
+
+    testWidgets('15. Renders entire redesigned Overview screen matching reference image structure', (tester) async {
+      final now = DateTime.now();
+      final summary = DailyUsageSummary(
+        date: now,
+        totalActiveTime: const Duration(hours: 1, minutes: 58),
+        goalTime: const Duration(hours: 8),
+        focusTime: Duration.zero,
+        breaksTaken: 1,
+        breakDuration: const Duration(minutes: 3),
+        timeBreakdown: const DailyTimeBreakdown(
+          totalUsage: Duration(hours: 1, minutes: 58),
+          focusDuration: Duration.zero,
+          breakDuration: Duration(minutes: 3),
+          otherUsageDuration: Duration(hours: 1, minutes: 55),
+        ),
+        hourlyActivity: List.filled(24, 0.0),
+        mostUsedApps: [
+          AppUsageData(
+            appName: 'Microsoft Edge',
+            duration: const Duration(minutes: 43),
+            proportionalUsage: 0.6,
+          ),
+          AppUsageData(
+            appName: 'WhatsApp',
+            duration: const Duration(minutes: 21),
+            proportionalUsage: 0.3,
+          ),
+        ],
+        allApps: [
+          AppUsageData(
+            appName: 'Microsoft Edge',
+            duration: const Duration(minutes: 43),
+            proportionalUsage: 0.6,
+          ),
+          AppUsageData(
+            appName: 'WhatsApp',
+            duration: const Duration(minutes: 21),
+            proportionalUsage: 0.3,
+          ),
+        ],
+        dailyActivity: const DailyActivityMetrics(
+          mostActiveHourText: '12:00 – 1:00 PM',
+          distinctAppsCount: 5,
+          longestSessionDuration: Duration(minutes: 42),
+          longestSessionAppName: 'Microsoft Edge',
+        ),
+      );
+
+      final mockTracker = MockWindowsUsageTracker(
+        repository: repository,
+        summary: summary,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.lightTheme,
+          home: TrackerProvider(
+            tracker: mockTracker,
+            child: FocusProvider(
+              focusService: focusService,
+              child: AppNavigation(
+                navigateTo: (_) {},
+                child: const OverviewScreen(),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // 1. Header elements
+      expect(find.text('Keep going. Small steps make a big difference.'), findsOneWidget);
+      expect(find.byIcon(LucideIcons.calendar), findsOneWidget);
+      expect(find.byIcon(LucideIcons.chevronDown), findsWidgets);
+
+      // 2. Top Summary cards
+      expect(find.text('Screen Time'), findsOneWidget);
+      expect(find.text('Focus Time'), findsOneWidget);
+      expect(find.text('Breaks'), findsOneWidget);
+      expect(find.text('total today'), findsOneWidget);
+      expect(find.text('1h 58m'), findsOneWidget);
+      expect(find.text('0h 0m'), findsOneWidget);
+      expect(find.text('1'), findsOneWidget);
+      expect(find.text('break today'), findsOneWidget);
+
+      // 3. Tracking Status card
+      expect(find.text('Tracking Active'), findsOneWidget);
+      expect(find.text('Monitoring your computer usage'), findsOneWidget);
+      expect(find.text('Pause'), findsOneWidget);
+
+      // 4. Daily Summary card
+      expect(find.text('Daily Summary'), findsOneWidget);
+      expect(find.text('Your computer usage and activity for today'), findsOneWidget);
+      expect(find.text('Other Usage'), findsOneWidget);
+      expect(find.text('Break Time'), findsOneWidget);
+      expect(find.text('Focus Sessions'), findsOneWidget);
+      expect(find.text('8h goal'), findsOneWidget);
+
+      // 5. Activity Timeline card
+      expect(find.text('Activity Timeline'), findsOneWidget);
+      expect(find.text('Recorded computer usage by hour'), findsOneWidget);
+      expect(find.text('Active'), findsOneWidget);
+      expect(find.text('No Activity'), findsOneWidget);
+
+      // 6. All Applications Today card
+      expect(find.text('All Applications Today'), findsOneWidget);
+      expect(find.text('View All'), findsOneWidget);
+      expect(find.text('Microsoft Edge'), findsWidgets);
+      expect(find.text('WhatsApp'), findsOneWidget);
+
+      // 7. Daily Activity card
+      expect(find.text('Daily Activity'), findsOneWidget);
+      expect(find.text('Most active hour'), findsOneWidget);
+      expect(find.text('12:00 – 1:00 PM'), findsOneWidget);
+      expect(find.text('Applications used'), findsOneWidget);
+      expect(find.text('5'), findsOneWidget);
+      expect(find.text('Longest active session'), findsOneWidget);
+      expect(find.text('42m'), findsOneWidget);
+
+      // 8. Bottom status note
+      expect(find.text('Your data is updated in real time while tracking is active.'), findsOneWidget);
+      expect(find.byIcon(LucideIcons.info), findsOneWidget);
+
+      // 9. Pause tracking interaction
+      await tester.tap(find.text('Pause'));
+      await tester.pumpAndSettle();
+      expect(mockTracker.isRunning, isFalse);
+      expect(find.text('Resume'), findsOneWidget);
+      expect(find.text('Tracking Paused'), findsOneWidget);
+
+      // 10. Resume tracking interaction
+      await tester.tap(find.text('Resume'));
+      await tester.pumpAndSettle();
+      expect(mockTracker.isRunning, isTrue);
+      expect(find.text('Pause'), findsOneWidget);
+      expect(find.text('Tracking Active'), findsOneWidget);
     });
   });
 }

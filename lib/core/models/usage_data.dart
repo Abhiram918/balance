@@ -41,6 +41,21 @@ class DailyTimeBreakdown {
   });
 }
 
+/// Metrics for the Daily Activity section: most active hour, unique apps, and longest session.
+class DailyActivityMetrics {
+  final String mostActiveHourText;
+  final int distinctAppsCount;
+  final Duration longestSessionDuration;
+  final String longestSessionAppName;
+
+  const DailyActivityMetrics({
+    required this.mostActiveHourText,
+    required this.distinctAppsCount,
+    required this.longestSessionDuration,
+    required this.longestSessionAppName,
+  });
+}
+
 class DailyUsageSummary {
   final DateTime date;
   final Duration totalActiveTime;
@@ -49,6 +64,7 @@ class DailyUsageSummary {
   final int breaksTaken;
   final Duration breakDuration;
   final DailyTimeBreakdown? timeBreakdown;
+  final DailyActivityMetrics? dailyActivity;
   final List<double> hourlyActivity; // 24 items, values 0.0 - 1.0
   final List<AppUsageData> mostUsedApps;
   final List<AppUsageData> allApps;
@@ -61,6 +77,7 @@ class DailyUsageSummary {
     required this.breaksTaken,
     this.breakDuration = Duration.zero,
     this.timeBreakdown,
+    this.dailyActivity,
     required this.hourlyActivity,
     required this.mostUsedApps,
     required this.allApps,

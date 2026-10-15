@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:balance/app/app.dart';
 import 'package:balance/app/theme/app_colors.dart';
+import 'package:balance/core/models/app_session.dart';
 import 'package:balance/core/models/focus_session.dart';
 import 'package:balance/core/services/focus_service.dart';
 import 'package:balance/core/services/settings_service.dart';
@@ -13,6 +15,8 @@ class FakeUsageRepository extends UsageRepository {
   ActiveFocusState? _active;
   final List<FocusSessionRecord> _sessions = [];
   final Map<String, String> _settings = {};
+
+  FakeUsageRepository() : super(dbName: inMemoryDatabasePath);
 
   @override
   Future<ActiveFocusState?> getActiveFocusState() async => _active;
@@ -46,6 +50,22 @@ class FakeUsageRepository extends UsageRepository {
   Future<List<FocusSessionRecord>> getRecentFocusSessions({int limit = 10}) async {
     return List.unmodifiable(_sessions.take(limit));
   }
+
+  @override
+  Future<List<FocusSessionRecord>> getFocusSessionsForRange(DateTime start, DateTime end) async {
+    return List.unmodifiable(_sessions);
+  }
+
+  @override
+  Future<List<FocusSessionRecord>> getFocusSessionsForDay(DateTime date) async {
+    return List.unmodifiable(_sessions);
+  }
+
+  @override
+  Future<List<AppSession>> getSessionsForDay(DateTime date) async => [];
+
+  @override
+  Future<List<AppSession>> getSessionsForRange(DateTime start, DateTime end) async => [];
 
   @override
   Future<String?> getSetting(String key) async => _settings[key];
