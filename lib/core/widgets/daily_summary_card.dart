@@ -22,7 +22,7 @@ class DailySummaryCard extends StatelessWidget {
     required this.data,
     this.dateLabel,
     this.onDateTap,
-    this.minHeight = 346,
+    this.minHeight = 300,
   });
 
   @override
@@ -51,7 +51,7 @@ class DailySummaryCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildHeader(context, colors),
-          const SizedBox(height: 28),
+          const SizedBox(height: 20),
           _buildBody(context, colors),
         ],
       ),
@@ -184,14 +184,14 @@ class DailySummaryCard extends StatelessWidget {
     const focusColor = Color(0xFF10B981);      // Emerald/Mint Green
 
     return SizedBox(
-      height: 228,
+      height: 176,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           // 1. Donut Chart with total inside
           SizedBox(
-            width: 160,
-            height: 160,
+            width: 146,
+            height: 146,
             child: Stack(
               alignment: Alignment.center,
               children: [
@@ -199,7 +199,7 @@ class DailySummaryCard extends StatelessWidget {
                   PieChart(
                     PieChartData(
                       sectionsSpace: 2.5,
-                      centerSpaceRadius: 50,
+                      centerSpaceRadius: 44,
                       startDegreeOffset: -90,
                       sections: [
                         if (otherSec > 0)
@@ -207,21 +207,21 @@ class DailySummaryCard extends StatelessWidget {
                             color: otherUsageColor,
                             value: otherSec.toDouble(),
                             title: '',
-                            radius: 20,
+                            radius: 18,
                           ),
                         if (breakSec > 0)
                           PieChartSectionData(
                             color: breakColor,
                             value: breakSec.toDouble(),
                             title: '',
-                            radius: 20,
+                            radius: 18,
                           ),
                         if (focusSec > 0)
                           PieChartSectionData(
                             color: focusColor,
                             value: focusSec.toDouble(),
                             title: '',
-                            radius: 20,
+                            radius: 18,
                           ),
                       ],
                     ),
@@ -240,7 +240,7 @@ class DailySummaryCard extends StatelessWidget {
                       '${totalHours}h ${totalMins}m',
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w800,
-                        fontSize: 17,
+                        fontSize: 16,
                         color: colors.textPrimary,
                         letterSpacing: -0.3,
                       ),
@@ -248,7 +248,7 @@ class DailySummaryCard extends StatelessWidget {
                     Text(
                       'total',
                       style: theme.textTheme.bodySmall?.copyWith(
-                        fontSize: 12,
+                        fontSize: 11,
                         color: colors.textSecondary,
                         fontWeight: FontWeight.w500,
                       ),
@@ -275,7 +275,7 @@ class DailySummaryCard extends StatelessWidget {
                   duration: Duration(seconds: otherSec),
                   totalSeconds: totalSec,
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: 12),
                 _buildLegendItem(
                   context: context,
                   colors: colors,
@@ -284,7 +284,7 @@ class DailySummaryCard extends StatelessWidget {
                   duration: Duration(seconds: breakSec),
                   totalSeconds: totalSec,
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: 12),
                 _buildLegendItem(
                   context: context,
                   colors: colors,
@@ -302,8 +302,8 @@ class DailySummaryCard extends StatelessWidget {
           VerticalDivider(
             width: 1,
             thickness: 1,
-            indent: 14,
-            endIndent: 14,
+            indent: 6,
+            endIndent: 6,
             color: colors.surfaceSecondary.withValues(alpha: 0.8),
           ),
           const SizedBox(width: AppSpacing.lg),
@@ -312,7 +312,7 @@ class DailySummaryCard extends StatelessWidget {
           Expanded(
             flex: 4,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 22),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               decoration: BoxDecoration(
                 color: const Color(0xFFF8FAFC),
                 borderRadius: BorderRadius.circular(16),
@@ -353,7 +353,7 @@ class DailySummaryCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 12),
                   Row(
                     children: [
                       Expanded(
@@ -380,7 +380,7 @@ class DailySummaryCard extends StatelessWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 8),
                   Text(
                     remainingText,
                     style: theme.textTheme.bodySmall?.copyWith(

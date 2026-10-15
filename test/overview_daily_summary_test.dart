@@ -11,6 +11,7 @@ import 'package:balance/core/services/usage_calculator.dart';
 import 'package:balance/core/services/usage_repository.dart';
 import 'package:balance/core/services/windows_usage_tracker.dart';
 import 'package:balance/core/widgets/app_shell.dart';
+import 'package:balance/core/widgets/activity_chart.dart';
 import 'package:balance/core/widgets/daily_summary_card.dart';
 import 'package:balance/core/widgets/overview_date_picker_dialog.dart';
 import 'package:balance/features/overview/overview_screen.dart';
@@ -1160,7 +1161,7 @@ void main() {
       final dailySummaryCardFinder = find.byType(DailySummaryCard);
       expect(dailySummaryCardFinder, findsOneWidget);
       final dailySummarySize = tester.getSize(dailySummaryCardFinder);
-      expect(dailySummarySize.height, greaterThanOrEqualTo(346.0));
+      expect(dailySummarySize.height, greaterThanOrEqualTo(300.0));
 
       // Verify that left column (DailySummary + ActivityTimeline) and right column (AllApps + DailyActivity)
       // finish at approximately the same vertical position
@@ -1174,8 +1175,8 @@ void main() {
       final appsRect = tester.getRect(appsFinder);
       final timelineRect = tester.getRect(timelineFinder);
       final dailyActivityRect = tester.getRect(dailyActivityFinder);
-      print('DEBUG: dailySummaryRect=$dailySummaryRect (height=${dailySummaryRect.height})');
-      print('DEBUG: appsRect=$appsRect (height=${appsRect.height})');
+      print('DEBUG: ActivityChart size: ${tester.getSize(find.byType(ActivityChart))}');
+      print('DEBUG: DailySummaryCard size: ${tester.getSize(dailySummaryCardFinder)}');
       print('DEBUG: timelineRect=$timelineRect (height=${timelineRect.height})');
       print('DEBUG: dailyActivityRect=$dailyActivityRect (height=${dailyActivityRect.height})');
 
