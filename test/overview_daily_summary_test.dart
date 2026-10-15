@@ -12,23 +12,39 @@ import 'package:balance/core/services/usage_repository.dart';
 import 'package:balance/core/services/windows_usage_tracker.dart';
 import 'package:balance/core/widgets/app_shell.dart';
 import 'package:balance/core/widgets/daily_summary_card.dart';
+import 'package:balance/core/widgets/overview_date_picker_dialog.dart';
 import 'package:balance/features/overview/overview_screen.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 class MockWindowsUsageTracker extends WindowsUsageTracker {
   bool _mockRunning = true;
   final DailyUsageSummary? _mockSummary;
+  DailyUsageSummary? _historicalSummary;
 
   MockWindowsUsageTracker({
     required super.repository,
     DailyUsageSummary? summary,
   }) : _mockSummary = summary;
 
+  void setHistoricalSummary(DailyUsageSummary? summary) {
+    _historicalSummary = summary;
+  }
+
   @override
   bool get isRunning => _mockRunning;
 
   @override
   DailyUsageSummary? get todaySummary => _mockSummary;
+
+  @override
+  Future<DailyUsageSummary> getSummaryForDay(DateTime date) async {
+    final now = DateTime.now();
+    final isToday = date.year == now.year && date.month == now.month && date.day == now.day;
+    if (isToday) {
+      return _mockSummary ?? DailyUsageSummary.empty(date);
+    }
+    return _historicalSummary ?? DailyUsageSummary.empty(date);
+  }
 
   @override
   void start() {
@@ -744,6 +760,428 @@ void main() {
       expect(mockTracker.isRunning, isTrue);
       expect(find.text('Pause'), findsOneWidget);
       expect(find.text('Tracking Active'), findsOneWidget);
+    });
+  });
+
+  group('Date Pickers & Column Alignment Tests', () {
+    late UsageRepository repository;
+    late FocusService focusService;
+
+    setUp(() async {
+      repository = UsageRepository(dbName: inMemoryDatabasePath);
+      focusService = FocusService(repository: repository);
+      await focusService.init();
+    });
+
+    tearDown(() async {
+      await repository.close();
+    });
+
+    test('1. Sessions crossing midnight boundary clamp accurately to calendar day', () async {
+      final oct14 = DateTime(2026, 10, 14);
+      final oct15 = DateTime(2026, 10, 15);
+
+      // Session starts at 23:30 on Oct 14 and ends at 01:00 on Oct 15 (90 mins total: 30 mins on Oct 14, 60 mins on Oct 15)
+      final session = AppSession(
+        appName: 'Edge',
+        exePath: r'C:\Edge.exe',
+        startTime: DateTime(2026, 10, 14, 23, 30),
+        endTime: DateTime(2026, 10, 15, 1, 0),
+      );
+      await repository.insertSession(session);
+
+      // Query for Oct 14
+      final sessions14 = await repository.getSessionsForDay(oct14);
+      expect(sessions14.length, equals(1));
+      final summary14 = UsageCalculator.calculateDailySummary(
+        date: oct14,
+        sessions: sessions14,
+      );
+      expect(summary14.totalActiveTime, equals(const Duration(minutes: 30)));
+
+      // Query for Oct 15
+      final sessions15 = await repository.getSessionsForDay(oct15);
+      expect(sessions15.length, equals(1));
+      final summary15 = UsageCalculator.calculateDailySummary(
+        date: oct15,
+        sessions: sessions15,
+      );
+      expect(summary15.totalActiveTime, equals(const Duration(hours: 1)));
+    });
+
+    testWidgets('2. Date picker dialog component: prevents future dates and handles quick actions', (tester) async {
+      final today = DateTime(2026, 10, 15);
+      final selectedDate = DateTime(2026, 10, 15);
+      DateTime? resultDate;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.lightTheme,
+          home: Scaffold(
+            body: Builder(
+              builder: (context) {
+                return ElevatedButton(
+                  onPressed: () async {
+                    resultDate = await showDialog<DateTime>(
+                      context: context,
+                      builder: (ctx) => OverviewDatePickerDialog(
+                        selectedDate: selectedDate,
+                        today: today,
+                      ),
+                    );
+                  },
+                  child: const Text('Open Dialog'),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+
+      // Open dialog
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Select Date'), findsOneWidget);
+      expect(find.text('Today'), findsWidgets);
+      expect(find.text('Yesterday'), findsOneWidget);
+      expect(find.text('Reset to Today'), findsOneWidget);
+      expect(find.text('Cancel'), findsOneWidget);
+      expect(find.text('Apply'), findsOneWidget);
+
+      // Verify CalendarDatePicker has lastDate == today (preventing future selection)
+      final calendarFinder = find.byType(CalendarDatePicker);
+      expect(calendarFinder, findsOneWidget);
+      final calendarWidget = tester.widget<CalendarDatePicker>(calendarFinder);
+      expect(calendarWidget.lastDate, equals(today));
+
+      // Tap Yesterday quick chip
+      await tester.tap(find.text('Yesterday'));
+      await tester.pumpAndSettle();
+
+      // Tap Apply
+      await tester.tap(find.text('Apply'));
+      await tester.pumpAndSettle();
+
+      expect(resultDate, equals(DateTime(2026, 10, 14)));
+
+      // Reopen and test Reset to Today
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Reset to Today'));
+      await tester.pumpAndSettle();
+
+      expect(resultDate, equals(today));
+
+      // Reopen and test Cancel
+      resultDate = DateTime(2020, 1, 1);
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      expect(resultDate, isNull); // Pop without return yields null
+    });
+
+    testWidgets('3. Opening date controls, selecting a date, and synchronization between header and Daily Summary', (tester) async {
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final yesterday = today.subtract(const Duration(days: 1));
+
+      final todaySummary = DailyUsageSummary(
+        date: today,
+        totalActiveTime: const Duration(hours: 3, minutes: 15),
+        goalTime: const Duration(hours: 8),
+        focusTime: const Duration(hours: 1, minutes: 0),
+        breaksTaken: 2,
+        breakDuration: const Duration(minutes: 15),
+        timeBreakdown: const DailyTimeBreakdown(
+          totalUsage: Duration(hours: 3, minutes: 15),
+          focusDuration: Duration(hours: 1, minutes: 0),
+          breakDuration: Duration(minutes: 15),
+          otherUsageDuration: Duration(hours: 2, minutes: 0),
+        ),
+        hourlyActivity: List.filled(24, 0.2),
+        mostUsedApps: [
+          AppUsageData(
+            appName: 'Chrome',
+            duration: const Duration(hours: 2),
+            proportionalUsage: 0.6,
+          ),
+        ],
+        allApps: [
+          AppUsageData(
+            appName: 'Chrome',
+            duration: const Duration(hours: 2),
+            proportionalUsage: 0.6,
+          ),
+        ],
+        dailyActivity: const DailyActivityMetrics(
+          mostActiveHourText: '2:00 – 3:00 PM',
+          distinctAppsCount: 1,
+          longestSessionDuration: Duration(hours: 1),
+          longestSessionAppName: 'Chrome',
+        ),
+      );
+
+      final yesterdaySummary = DailyUsageSummary(
+        date: yesterday,
+        totalActiveTime: const Duration(hours: 1, minutes: 45),
+        goalTime: const Duration(hours: 8),
+        focusTime: const Duration(minutes: 30),
+        breaksTaken: 1,
+        breakDuration: const Duration(minutes: 10),
+        timeBreakdown: const DailyTimeBreakdown(
+          totalUsage: Duration(hours: 1, minutes: 45),
+          focusDuration: Duration(minutes: 30),
+          breakDuration: Duration(minutes: 10),
+          otherUsageDuration: Duration(hours: 1, minutes: 5),
+        ),
+        hourlyActivity: List.filled(24, 0.1),
+        mostUsedApps: [
+          AppUsageData(
+            appName: 'VS Code',
+            duration: const Duration(hours: 1),
+            proportionalUsage: 0.7,
+          ),
+        ],
+        allApps: [
+          AppUsageData(
+            appName: 'VS Code',
+            duration: const Duration(hours: 1),
+            proportionalUsage: 0.7,
+          ),
+        ],
+        dailyActivity: const DailyActivityMetrics(
+          mostActiveHourText: '10:00 – 11:00 AM',
+          distinctAppsCount: 1,
+          longestSessionDuration: Duration(hours: 1),
+          longestSessionAppName: 'VS Code',
+        ),
+      );
+
+      final mockTracker = MockWindowsUsageTracker(
+        repository: repository,
+        summary: todaySummary,
+      );
+      mockTracker.setHistoricalSummary(yesterdaySummary);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.lightTheme,
+          home: TrackerProvider(
+            tracker: mockTracker,
+            child: FocusProvider(
+              focusService: focusService,
+              child: AppNavigation(
+                navigateTo: (_) {},
+                child: const OverviewScreen(),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Initially displays Today's metrics
+      expect(find.text('3h 15m'), findsWidgets);
+      expect(find.text('total today'), findsOneWidget);
+      expect(find.text('Chrome'), findsWidgets);
+      expect(find.text('Today'), findsWidgets);
+
+      // Open date picker from Daily Summary card date pill
+      final dailySummaryTodayPill = find.descendant(
+        of: find.byType(DailySummaryCard),
+        matching: find.text('Today'),
+      );
+      expect(dailySummaryTodayPill, findsOneWidget);
+      await tester.tap(dailySummaryTodayPill);
+      await tester.pumpAndSettle();
+
+      // Dialog is open
+      expect(find.text('Select Date'), findsOneWidget);
+
+      // Tap Yesterday quick chip in dialog
+      await tester.tap(find.text('Yesterday'));
+      await tester.pumpAndSettle();
+
+      // Tap Apply
+      await tester.tap(find.text('Apply'));
+      await tester.pumpAndSettle();
+
+      // Both controls are immediately updated to Yesterday!
+      expect(find.text('Yesterday'), findsWidgets);
+      // Content updated to Yesterday's data
+      expect(find.text('1h 45m'), findsWidgets);
+      expect(find.text('total for day'), findsOneWidget);
+      expect(find.text('VS Code'), findsWidgets);
+      expect(find.text('Chrome'), findsNothing);
+
+      // Open date picker from top-right header date control
+      final headerDatePill = find.descendant(
+        of: find.byType(InkWell),
+        matching: find.byIcon(LucideIcons.calendar),
+      );
+      expect(headerDatePill, findsOneWidget);
+      await tester.tap(headerDatePill);
+      await tester.pumpAndSettle();
+
+      // Dialog is open again
+      expect(find.text('Select Date'), findsOneWidget);
+
+      // Tap Reset to Today
+      await tester.tap(find.text('Reset to Today'));
+      await tester.pumpAndSettle();
+
+      // Both controls are synchronized back to Today!
+      expect(find.text('Today'), findsWidgets);
+      expect(find.text('3h 15m'), findsWidgets);
+      expect(find.text('total today'), findsOneWidget);
+      expect(find.text('Chrome'), findsWidgets);
+    });
+
+    testWidgets('4. Empty historical date shows zeroes and truthful empty state without falling back to today', (tester) async {
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final emptyDate = today.subtract(const Duration(days: 5));
+
+      final todaySummary = DailyUsageSummary(
+        date: today,
+        totalActiveTime: const Duration(hours: 4),
+        goalTime: const Duration(hours: 8),
+        focusTime: const Duration(hours: 1),
+        breaksTaken: 2,
+        breakDuration: const Duration(minutes: 10),
+        timeBreakdown: const DailyTimeBreakdown(
+          totalUsage: Duration(hours: 4),
+          focusDuration: Duration(hours: 1),
+          breakDuration: Duration(minutes: 10),
+          otherUsageDuration: Duration(hours: 2, minutes: 50),
+        ),
+        hourlyActivity: List.filled(24, 0.3),
+        mostUsedApps: [
+          AppUsageData(
+            appName: 'Chrome',
+            duration: const Duration(hours: 3),
+            proportionalUsage: 0.75,
+          ),
+        ],
+        allApps: [
+          AppUsageData(
+            appName: 'Chrome',
+            duration: const Duration(hours: 3),
+            proportionalUsage: 0.75,
+          ),
+        ],
+        dailyActivity: const DailyActivityMetrics(
+          mostActiveHourText: '1:00 – 2:00 PM',
+          distinctAppsCount: 1,
+          longestSessionDuration: Duration(hours: 2),
+          longestSessionAppName: 'Chrome',
+        ),
+      );
+
+      final mockTracker = MockWindowsUsageTracker(
+        repository: repository,
+        summary: todaySummary,
+      );
+      mockTracker.setHistoricalSummary(DailyUsageSummary.empty(emptyDate));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.lightTheme,
+          home: TrackerProvider(
+            tracker: mockTracker,
+            child: FocusProvider(
+              focusService: focusService,
+              child: AppNavigation(
+                navigateTo: (_) {},
+                child: const OverviewScreen(),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Open dialog from header
+      final headerDatePill = find.descendant(
+        of: find.byType(InkWell),
+        matching: find.byIcon(LucideIcons.calendar),
+      );
+      await tester.tap(headerDatePill);
+      await tester.pumpAndSettle();
+
+      // Tap Yesterday to switch away from today
+      await tester.tap(find.text('Yesterday'));
+      await tester.pumpAndSettle();
+
+      // Tap Apply
+      await tester.tap(find.text('Apply'));
+      await tester.pumpAndSettle();
+
+      // Verifies zero and empty state
+      expect(find.text('0h 0m'), findsWidgets); // Screen time and focus time are 0
+      expect(find.text('0'), findsWidgets);    // Breaks taken is 0
+      expect(find.text('Chrome'), findsNothing); // Today's apps are not shown!
+      expect(find.textContaining('No application usage recorded'), findsOneWidget);
+    });
+
+    testWidgets('5. Vertical column alignment: Left and right columns have matching total minimum height', (tester) async {
+      final summary = DailyUsageSummary.empty(DateTime.now());
+      final mockTracker = MockWindowsUsageTracker(
+        repository: repository,
+        summary: summary,
+      );
+
+      // Render at desktop width 1200x800
+      tester.view.physicalSize = const Size(1200, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.lightTheme,
+          home: TrackerProvider(
+            tracker: mockTracker,
+            child: FocusProvider(
+              focusService: focusService,
+              child: AppNavigation(
+                navigateTo: (_) {},
+                child: const OverviewScreen(),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Find DailySummaryCard
+      final dailySummaryCardFinder = find.byType(DailySummaryCard);
+      expect(dailySummaryCardFinder, findsOneWidget);
+      final dailySummarySize = tester.getSize(dailySummaryCardFinder);
+      expect(dailySummarySize.height, greaterThanOrEqualTo(346.0));
+
+      // Verify that left column (DailySummary + ActivityTimeline) and right column (AllApps + DailyActivity)
+      // finish at approximately the same vertical position
+      final timelineFinder = find.byKey(const Key('activity_timeline_card'));
+      final dailyActivityFinder = find.byKey(const Key('daily_activity_card'));
+      expect(timelineFinder, findsOneWidget);
+      expect(dailyActivityFinder, findsOneWidget);
+
+      final dailySummaryRect = tester.getRect(dailySummaryCardFinder);
+      final appsFinder = find.ancestor(of: find.text('All Applications Today'), matching: find.byType(Container)).first;
+      final appsRect = tester.getRect(appsFinder);
+      final timelineRect = tester.getRect(timelineFinder);
+      final dailyActivityRect = tester.getRect(dailyActivityFinder);
+      print('DEBUG: dailySummaryRect=$dailySummaryRect (height=${dailySummaryRect.height})');
+      print('DEBUG: appsRect=$appsRect (height=${appsRect.height})');
+      print('DEBUG: timelineRect=$timelineRect (height=${timelineRect.height})');
+      print('DEBUG: dailyActivityRect=$dailyActivityRect (height=${dailyActivityRect.height})');
+
+      // Verify bottom edges align within 20px
+      final bottomDifference = (timelineRect.bottom - dailyActivityRect.bottom).abs();
+      expect(bottomDifference, lessThanOrEqualTo(20.0));
     });
   });
 }

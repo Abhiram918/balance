@@ -316,12 +316,17 @@ class WindowsUsageTracker extends ChangeNotifier {
     super.dispose();
   }
 
-  Future<void> _refreshSummary() async {
+  /// Retrieves the daily usage summary for a specific calendar date.
+  /// If [date] is today, incorporates any active in-progress app session and active focus session.
+  /// If [date] is historical, queries recorded sessions and focus sessions from the database.
+  Future<DailyUsageSummary> getSummaryForDay(DateTime date) async {
     final now = DateTime.now();
-    final sessions = await repository.getSessionsForDay(now);
+    final isToday = date.year == now.year && date.month == now.month && date.day == now.day;
 
-    // If an in-progress session exists, combine it safely without duplicate counting
-    if (_currentExePath != null && _sessionStartTime != null) {
+    final sessions = await repository.getSessionsForDay(date);
+
+    // If an in-progress session exists and querying today, combine it safely without duplicate counting
+    if (isToday && _currentExePath != null && _sessionStartTime != null) {
       final liveSession = AppSession(
         id: _currentSessionId,
         appName: _currentAppName ?? 'Unknown',
@@ -344,33 +349,35 @@ class WindowsUsageTracker extends ChangeNotifier {
       }
     }
 
-    // Retrieve today's recorded focus & break sessions
-    final focusSessions = await repository.getFocusSessionsForDay(now);
+    // Retrieve recorded focus & break sessions for the requested day
+    final focusSessions = await repository.getFocusSessionsForDay(date);
 
-    // Extract active focus/break session state if running or paused
+    // Extract active focus/break session state if running or paused (only applies to today)
     ActiveFocusState? activeFocus;
-    if (focusService != null && (focusService!.isRunning || focusService!.isPaused)) {
-      activeFocus = ActiveFocusState(
-        type: focusService!.sessionType,
-        status: focusService!.status,
-        targetDuration: focusService!.targetDuration,
-        startTime: focusService!.startTime ?? now,
-        expectedEndTime: focusService!.expectedEndTime ?? now,
-        remainingDuration: focusService!.remainingDuration,
-      );
-    } else {
-      activeFocus = await repository.getActiveFocusState();
+    if (isToday) {
+      if (focusService != null && (focusService!.isRunning || focusService!.isPaused)) {
+        activeFocus = ActiveFocusState(
+          type: focusService!.sessionType,
+          status: focusService!.status,
+          targetDuration: focusService!.targetDuration,
+          startTime: focusService!.startTime ?? now,
+          expectedEndTime: focusService!.expectedEndTime ?? now,
+          remainingDuration: focusService!.remainingDuration,
+        );
+      } else {
+        activeFocus = await repository.getActiveFocusState();
+      }
     }
 
     final focusMetrics = UsageCalculator.calculateFocusMetrics(
-      date: now,
+      date: date,
       focusSessions: focusSessions,
       activeState: activeFocus,
-      now: now,
+      now: isToday ? now : DateTime(date.year, date.month, date.day, 23, 59, 59),
     );
 
-    _todaySummary = UsageCalculator.calculateDailySummary(
-      date: now,
+    return UsageCalculator.calculateDailySummary(
+      date: date,
       sessions: sessions,
       focusTime: focusMetrics.focusTime,
       breaksTaken: focusMetrics.breaksTaken,
@@ -378,7 +385,10 @@ class WindowsUsageTracker extends ChangeNotifier {
       focusIntervals: focusMetrics.focusIntervals,
       breakIntervals: focusMetrics.breakIntervals,
     );
+  }
 
+  Future<void> _refreshSummary() async {
+    _todaySummary = await getSummaryForDay(DateTime.now());
     notifyListeners();
   }
 }

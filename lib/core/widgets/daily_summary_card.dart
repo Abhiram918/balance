@@ -13,10 +13,16 @@ import '../models/usage_data.dart';
 /// - Daily goal section with target icon, progress bar, percentage, and remaining time.
 class DailySummaryCard extends StatelessWidget {
   final DailyUsageSummary data;
+  final String? dateLabel;
+  final VoidCallback? onDateTap;
+  final double? minHeight;
 
   const DailySummaryCard({
     super.key,
     required this.data,
+    this.dateLabel,
+    this.onDateTap,
+    this.minHeight = 346,
   });
 
   @override
@@ -25,6 +31,7 @@ class DailySummaryCard extends StatelessWidget {
     final colors = theme.extension<AppThemeColors>()!;
 
     return Container(
+      constraints: minHeight != null ? BoxConstraints(minHeight: minHeight!) : null,
       decoration: BoxDecoration(
         color: colors.surface,
         borderRadius: BorderRadius.circular(20),
@@ -44,7 +51,7 @@ class DailySummaryCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildHeader(context, colors),
-          const SizedBox(height: AppSpacing.xl),
+          const SizedBox(height: 28),
           _buildBody(context, colors),
         ],
       ),
@@ -54,6 +61,10 @@ class DailySummaryCard extends StatelessWidget {
   /// Card Header with Chart Icon, Title, Subtitle, and Date Selector Pill
   Widget _buildHeader(BuildContext context, AppThemeColors colors) {
     final theme = Theme.of(context);
+    final isCustomDate = dateLabel != null && dateLabel != 'Today';
+    final subtitle = isCustomDate
+        ? 'Your computer usage and activity for $dateLabel'
+        : 'Your computer usage and activity for today';
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -89,7 +100,7 @@ class DailySummaryCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'Your computer usage and activity for today',
+                      subtitle,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodySmall?.copyWith(
@@ -104,34 +115,38 @@ class DailySummaryCard extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 8),
-        // Dropdown pill: Today ∨
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-          decoration: BoxDecoration(
-            color: colors.surface,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: colors.surfaceSecondary,
+        // Interactive Dropdown pill: Today ∨
+        InkWell(
+          onTap: onDateTap,
+          borderRadius: BorderRadius.circular(20),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+            decoration: BoxDecoration(
+              color: colors.surface,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: colors.surfaceSecondary,
+              ),
             ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Today',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: colors.textPrimary,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  dateLabel ?? 'Today',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: colors.textPrimary,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 4),
-              Icon(
-                LucideIcons.chevronDown,
-                size: 15,
-                color: colors.textSecondary,
-              ),
-            ],
+                const SizedBox(width: 4),
+                Icon(
+                  LucideIcons.chevronDown,
+                  size: 15,
+                  color: colors.textSecondary,
+                ),
+              ],
+            ),
           ),
         ),
       ],
@@ -168,14 +183,15 @@ class DailySummaryCard extends StatelessWidget {
     const breakColor = Color(0xFFA855F7);      // Magenta/Purple
     const focusColor = Color(0xFF10B981);      // Emerald/Mint Green
 
-    return IntrinsicHeight(
+    return SizedBox(
+      height: 228,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           // 1. Donut Chart with total inside
           SizedBox(
-            width: 148,
-            height: 148,
+            width: 160,
+            height: 160,
             child: Stack(
               alignment: Alignment.center,
               children: [
@@ -183,7 +199,7 @@ class DailySummaryCard extends StatelessWidget {
                   PieChart(
                     PieChartData(
                       sectionsSpace: 2.5,
-                      centerSpaceRadius: 46,
+                      centerSpaceRadius: 50,
                       startDegreeOffset: -90,
                       sections: [
                         if (otherSec > 0)
@@ -191,21 +207,21 @@ class DailySummaryCard extends StatelessWidget {
                             color: otherUsageColor,
                             value: otherSec.toDouble(),
                             title: '',
-                            radius: 18,
+                            radius: 20,
                           ),
                         if (breakSec > 0)
                           PieChartSectionData(
                             color: breakColor,
                             value: breakSec.toDouble(),
                             title: '',
-                            radius: 18,
+                            radius: 20,
                           ),
                         if (focusSec > 0)
                           PieChartSectionData(
                             color: focusColor,
                             value: focusSec.toDouble(),
                             title: '',
-                            radius: 18,
+                            radius: 20,
                           ),
                       ],
                     ),
@@ -224,7 +240,7 @@ class DailySummaryCard extends StatelessWidget {
                       '${totalHours}h ${totalMins}m',
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w800,
-                        fontSize: 16,
+                        fontSize: 17,
                         color: colors.textPrimary,
                         letterSpacing: -0.3,
                       ),
@@ -232,7 +248,7 @@ class DailySummaryCard extends StatelessWidget {
                     Text(
                       'total',
                       style: theme.textTheme.bodySmall?.copyWith(
-                        fontSize: 11,
+                        fontSize: 12,
                         color: colors.textSecondary,
                         fontWeight: FontWeight.w500,
                       ),
@@ -259,7 +275,7 @@ class DailySummaryCard extends StatelessWidget {
                   duration: Duration(seconds: otherSec),
                   totalSeconds: totalSec,
                 ),
-                const SizedBox(height: AppSpacing.md),
+                const SizedBox(height: 18),
                 _buildLegendItem(
                   context: context,
                   colors: colors,
@@ -268,7 +284,7 @@ class DailySummaryCard extends StatelessWidget {
                   duration: Duration(seconds: breakSec),
                   totalSeconds: totalSec,
                 ),
-                const SizedBox(height: AppSpacing.md),
+                const SizedBox(height: 18),
                 _buildLegendItem(
                   context: context,
                   colors: colors,
@@ -286,6 +302,8 @@ class DailySummaryCard extends StatelessWidget {
           VerticalDivider(
             width: 1,
             thickness: 1,
+            indent: 14,
+            endIndent: 14,
             color: colors.surfaceSecondary.withValues(alpha: 0.8),
           ),
           const SizedBox(width: AppSpacing.lg),
@@ -294,7 +312,7 @@ class DailySummaryCard extends StatelessWidget {
           Expanded(
             flex: 4,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 22),
               decoration: BoxDecoration(
                 color: const Color(0xFFF8FAFC),
                 borderRadius: BorderRadius.circular(16),
@@ -306,32 +324,36 @@ class DailySummaryCard extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 28,
-                        height: 28,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFEFF6FF),
-                          shape: BoxShape.circle,
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 28,
+                          height: 28,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFEFF6FF),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            LucideIcons.target,
+                            size: 15,
+                            color: Color(0xFF2563EB),
+                          ),
                         ),
-                        child: const Icon(
-                          LucideIcons.target,
-                          size: 15,
-                          color: Color(0xFF2563EB),
+                        const SizedBox(width: 8),
+                        Text(
+                          '${data.goalTime.inHours}h goal',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: colors.textPrimary,
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        '${data.goalTime.inHours}h goal',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: colors.textPrimary,
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 14),
                   Row(
                     children: [
                       Expanded(
@@ -358,7 +380,7 @@ class DailySummaryCard extends StatelessWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 10),
                   Text(
                     remainingText,
                     style: theme.textTheme.bodySmall?.copyWith(

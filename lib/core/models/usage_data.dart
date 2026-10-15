@@ -83,6 +83,33 @@ class DailyUsageSummary {
     required this.allApps,
   });
 
+  /// Creates an empty [DailyUsageSummary] for a date with no recorded usage.
+  factory DailyUsageSummary.empty(DateTime date) {
+    return DailyUsageSummary(
+      date: date,
+      totalActiveTime: Duration.zero,
+      goalTime: const Duration(hours: 8),
+      focusTime: Duration.zero,
+      breaksTaken: 0,
+      breakDuration: Duration.zero,
+      timeBreakdown: const DailyTimeBreakdown(
+        totalUsage: Duration.zero,
+        focusDuration: Duration.zero,
+        breakDuration: Duration.zero,
+        otherUsageDuration: Duration.zero,
+      ),
+      dailyActivity: const DailyActivityMetrics(
+        mostActiveHourText: 'None recorded',
+        distinctAppsCount: 0,
+        longestSessionDuration: Duration.zero,
+        longestSessionAppName: 'None recorded',
+      ),
+      hourlyActivity: List.filled(24, 0.0),
+      mostUsedApps: const [],
+      allApps: const [],
+    );
+  }
+
   // Demo Data Generator
   static DailyUsageSummary generateDemoData() {
     final now = DateTime.now();

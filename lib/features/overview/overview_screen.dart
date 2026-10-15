@@ -9,11 +9,108 @@ import '../../core/models/usage_data.dart';
 import '../../core/widgets/activity_chart.dart';
 import '../../core/widgets/app_shell.dart';
 import '../../core/widgets/daily_summary_card.dart';
+import '../../core/widgets/overview_date_picker_dialog.dart';
 
 /// Complete Overview redesign matching the reference image layout, typography,
-/// colors, card placement, and data reconciliation.
-class OverviewScreen extends StatelessWidget {
+/// colors, card placement, working date pickers, and balanced column alignment.
+class OverviewScreen extends StatefulWidget {
   const OverviewScreen({super.key});
+
+  @override
+  State<OverviewScreen> createState() => _OverviewScreenState();
+}
+
+class _OverviewScreenState extends State<OverviewScreen> {
+  late DateTime _selectedDate;
+  DailyUsageSummary? _historicalSummary;
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    _selectedDate = DateTime(now.year, now.month, now.day);
+  }
+
+  bool _isSameCalendarDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  bool get _isToday {
+    final now = DateTime.now();
+    return _isSameCalendarDay(_selectedDate, now);
+  }
+
+  bool get _isYesterday {
+    final yesterday = DateTime.now().subtract(const Duration(days: 1));
+    return _isSameCalendarDay(_selectedDate, yesterday);
+  }
+
+  String get _headerDateLabel {
+    if (_isToday) {
+      return 'Today, ${DateFormat('MMM d, yyyy').format(_selectedDate)}';
+    } else if (_isYesterday) {
+      return 'Yesterday, ${DateFormat('MMM d, yyyy').format(_selectedDate)}';
+    } else {
+      return DateFormat('EEE, MMM d, yyyy').format(_selectedDate);
+    }
+  }
+
+  String get _summaryDateLabel {
+    if (_isToday) {
+      return 'Today';
+    } else if (_isYesterday) {
+      return 'Yesterday';
+    } else {
+      return DateFormat('MMM d').format(_selectedDate);
+    }
+  }
+
+  Future<void> _selectDate(DateTime newDate) async {
+    final norm = DateTime(newDate.year, newDate.month, newDate.day);
+    if (_isSameCalendarDay(_selectedDate, norm)) return;
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    if (_isSameCalendarDay(norm, today)) {
+      setState(() {
+        _selectedDate = today;
+        _historicalSummary = null;
+      });
+      return;
+    }
+
+    setState(() {
+      _selectedDate = norm;
+      _historicalSummary = null;
+    });
+
+    final tracker = TrackerProvider.of(context);
+    final summary = await tracker.getSummaryForDay(norm);
+
+    if (mounted && _isSameCalendarDay(_selectedDate, norm)) {
+      setState(() {
+        _historicalSummary = summary;
+      });
+    }
+  }
+
+  Future<void> _openDatePicker() async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    final picked = await showDialog<DateTime>(
+      context: context,
+      builder: (ctx) => OverviewDatePickerDialog(
+        selectedDate: _selectedDate,
+        today: today,
+      ),
+    );
+
+    if (picked != null) {
+      await _selectDate(picked);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -25,17 +122,10 @@ class OverviewScreen extends StatelessWidget {
     return ListenableBuilder(
       listenable: Listenable.merge([tracker, focusService]),
       builder: (context, _) {
-        final data = tracker.todaySummary ??
-            DailyUsageSummary(
-              date: DateTime.now(),
-              totalActiveTime: Duration.zero,
-              goalTime: const Duration(hours: 8),
-              focusTime: Duration.zero,
-              breaksTaken: 0,
-              hourlyActivity: List.filled(24, 0.0),
-              mostUsedApps: [],
-              allApps: [],
-            );
+        final todayData = tracker.todaySummary ?? DailyUsageSummary.empty(DateTime.now());
+        final data = _isToday
+            ? todayData
+            : (_historicalSummary ?? DailyUsageSummary.empty(_selectedDate));
 
         return Scaffold(
           backgroundColor: colors.background,
@@ -85,7 +175,12 @@ class OverviewScreen extends StatelessWidget {
                                 flex: 6,
                                 child: Column(
                                   children: [
-                                    DailySummaryCard(data: data),
+                                    DailySummaryCard(
+                                      data: data,
+                                      dateLabel: _summaryDateLabel,
+                                      onDateTap: _openDatePicker,
+                                      minHeight: 346,
+                                    ),
                                     const SizedBox(height: 16),
                                     _buildActivityTimelineCard(context, colors, data),
                                   ],
@@ -124,7 +219,12 @@ class OverviewScreen extends StatelessWidget {
                             ],
                           ),
                           const SizedBox(height: 16),
-                          DailySummaryCard(data: data),
+                          DailySummaryCard(
+                            data: data,
+                            dateLabel: _summaryDateLabel,
+                            onDateTap: _openDatePicker,
+                            minHeight: 346,
+                          ),
                           const SizedBox(height: 16),
                           _buildActivityTimelineCard(context, colors, data),
                           const SizedBox(height: 16),
@@ -151,7 +251,6 @@ class OverviewScreen extends StatelessWidget {
   Widget _buildHeader(BuildContext context, AppThemeColors colors, DailyUsageSummary data) {
     final greeting = _getTimeGreeting();
     final userName = _getUserDisplayName();
-    final formattedDate = DateFormat("'Today, 'MMM d, yyyy").format(data.date);
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -194,47 +293,51 @@ class OverviewScreen extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 12),
-        // Date Selector Pill
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          decoration: BoxDecoration(
-            color: colors.surface,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: colors.surfaceSecondary,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.02),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
+        // Date Selector Pill (Interactive)
+        InkWell(
+          onTap: _openDatePicker,
+          borderRadius: BorderRadius.circular(20),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: colors.surface,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: colors.surfaceSecondary,
               ),
-            ],
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                LucideIcons.calendar,
-                size: 14,
-                color: colors.textSecondary,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                formattedDate,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: colors.textPrimary,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.02),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
                 ),
-              ),
-              const SizedBox(width: 6),
-              Icon(
-                LucideIcons.chevronDown,
-                size: 14,
-                color: colors.textSecondary,
-              ),
-            ],
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  LucideIcons.calendar,
+                  size: 14,
+                  color: colors.textSecondary,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  _headerDateLabel,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: colors.textPrimary,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Icon(
+                  LucideIcons.chevronDown,
+                  size: 14,
+                  color: colors.textSecondary,
+                ),
+              ],
+            ),
           ),
         ),
       ],
@@ -247,6 +350,7 @@ class OverviewScreen extends StatelessWidget {
 
   /// 1. Screen Time Card (Pale Blue)
   Widget _buildScreenTimeCard(BuildContext context, AppThemeColors colors, DailyUsageSummary data) {
+    final isToday = _isSameCalendarDay(data.date, DateTime.now());
     final total = data.totalActiveTime;
     final hours = total.inHours;
     final minutes = total.inMinutes.remainder(60);
@@ -313,7 +417,7 @@ class OverviewScreen extends StatelessWidget {
                 ),
                 const SizedBox(width: 6),
                 Text(
-                  'total today',
+                  isToday ? 'total today' : 'total for day',
                   style: TextStyle(
                     fontSize: 11,
                     color: colors.textSecondary,
@@ -481,7 +585,9 @@ class OverviewScreen extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            breaks == 1 ? 'break today' : 'breaks today',
+            _isSameCalendarDay(data.date, DateTime.now())
+                ? (breaks == 1 ? 'break today' : 'breaks today')
+                : (breaks == 1 ? 'break for day' : 'breaks for day'),
             style: TextStyle(
               fontSize: 11,
               color: colors.textSecondary,
@@ -637,6 +743,8 @@ class OverviewScreen extends StatelessWidget {
     DailyUsageSummary data,
   ) {
     return Container(
+      key: const Key('activity_timeline_card'),
+      constraints: const BoxConstraints(minHeight: 290),
       decoration: BoxDecoration(
         color: colors.surface,
         borderRadius: BorderRadius.circular(20),
@@ -762,12 +870,14 @@ class OverviewScreen extends StatelessWidget {
     AppThemeColors colors,
     DailyUsageSummary data,
   ) {
+    final isToday = _isSameCalendarDay(data.date, DateTime.now());
     // Exclude Balance itself from user applications
     final apps = data.allApps
         .where((a) => a.appName.trim().toLowerCase() != 'balance')
         .toList();
 
     return Container(
+      constraints: const BoxConstraints(minHeight: 346),
       decoration: BoxDecoration(
         color: colors.surface,
         borderRadius: BorderRadius.circular(20),
@@ -806,7 +916,9 @@ class OverviewScreen extends StatelessWidget {
                     const SizedBox(width: AppSpacing.md),
                     Expanded(
                       child: Text(
-                        'All Applications Today',
+                        isToday
+                            ? 'All Applications Today'
+                            : 'Applications (${DateFormat('MMM d').format(data.date)})',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -864,7 +976,9 @@ class OverviewScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      'No application usage recorded today.\nInteract with apps to see them here.',
+                      isToday
+                          ? 'No application usage recorded today.\nInteract with apps to see them here.'
+                          : 'No application usage recorded for ${DateFormat('MMMM d, yyyy').format(data.date)}.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: colors.textSecondary,
@@ -1021,6 +1135,8 @@ class OverviewScreen extends StatelessWidget {
         : (longestDurHours > 0 ? '${longestDurHours}h ${longestDurMins}m' : '${longestDurMins}m');
 
     return Container(
+      key: const Key('daily_activity_card'),
+      constraints: const BoxConstraints(minHeight: 290),
       decoration: BoxDecoration(
         color: colors.surface,
         borderRadius: BorderRadius.circular(20),
@@ -1079,31 +1195,35 @@ class OverviewScreen extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          Container(
-                            width: 22,
-                            height: 22,
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(6),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 22,
+                              height: 22,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: const Icon(
+                                LucideIcons.clock,
+                                size: 13,
+                                color: Color(0xFF2563EB),
+                              ),
                             ),
-                            child: const Icon(
-                              LucideIcons.clock,
-                              size: 13,
-                              color: Color(0xFF2563EB),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Most active hour',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: colors.textSecondary,
+                                fontWeight: FontWeight.w500,
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Most active hour',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: colors.textSecondary,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                       const SizedBox(height: 8),
                       Text(
@@ -1133,54 +1253,62 @@ class OverviewScreen extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          Container(
-                            width: 22,
-                            height: 22,
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(6),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 22,
+                              height: 22,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: const Icon(
+                                LucideIcons.layoutGrid,
+                                size: 13,
+                                color: Color(0xFF059669),
+                              ),
                             ),
-                            child: const Icon(
-                              LucideIcons.layoutGrid,
-                              size: 13,
-                              color: Color(0xFF059669),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Applications used',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: colors.textSecondary,
+                                fontWeight: FontWeight.w500,
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Applications used',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: colors.textSecondary,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                       const SizedBox(height: 6),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.baseline,
-                        textBaseline: TextBaseline.alphabetic,
-                        children: [
-                          Text(
-                            '$distinctApps',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w800,
-                              color: colors.textPrimary,
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.baseline,
+                          textBaseline: TextBaseline.alphabetic,
+                          children: [
+                            Text(
+                              '$distinctApps',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                color: colors.textPrimary,
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            'unique apps today',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: colors.textSecondary,
+                            const SizedBox(width: 4),
+                            Text(
+                              'unique apps today',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: colors.textSecondary,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -1201,31 +1329,35 @@ class OverviewScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 22,
-                      height: 22,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(6),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 22,
+                        height: 22,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Icon(
+                          LucideIcons.timer,
+                          size: 13,
+                          color: Color(0xFF7C3AED),
+                        ),
                       ),
-                      child: const Icon(
-                        LucideIcons.timer,
-                        size: 13,
-                        color: Color(0xFF7C3AED),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Longest active session',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: colors.textSecondary,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Longest active session',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: colors.textSecondary,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 6),
                 Text(
