@@ -234,34 +234,69 @@ class _ApplicationsScreenState extends State<ApplicationsScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Page Header with Title, subtle description, and Date-range selector
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Expanded(
-                  child: PageHeader(
-                    title: 'Applications',
-                    subtitle: 'Monitor application usage, analyze activity trends, and set daily limits.',
-                  ),
-                ),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final isCompact = constraints.maxWidth < 800;
+                if (isCompact) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const PageHeader(
+                        title: 'Applications',
+                        subtitle: 'Monitor application usage, analyze activity trends, and set daily limits.',
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ApplicationsDateSelector(
+                              selection: _selection,
+                              onSelectionChanged: _onDateSelectionChanged,
+                              referenceDate: widget.referenceDate,
+                            ),
+                          ),
+                          const SizedBox(width: AppSpacing.sm),
+                          IconButton(
+                            icon: const Icon(LucideIcons.refreshCw, size: 16),
+                            tooltip: 'Refresh Analytics',
+                            color: colors.textSecondary,
+                            onPressed: () => _loadAnalytics(isBackground: false),
+                          ),
+                        ],
+                      ),
+                    ],
+                  );
+                }
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    ApplicationsDateSelector(
-                      selection: _selection,
-                      onSelectionChanged: _onDateSelectionChanged,
-                      referenceDate: widget.referenceDate,
+                    const Expanded(
+                      child: PageHeader(
+                        title: 'Applications',
+                        subtitle: 'Monitor application usage, analyze activity trends, and set daily limits.',
+                      ),
                     ),
-                    const SizedBox(width: AppSpacing.sm),
-                    IconButton(
-                      icon: const Icon(LucideIcons.refreshCw, size: 16),
-                      tooltip: 'Refresh Analytics',
-                      color: colors.textSecondary,
-                      onPressed: () => _loadAnalytics(isBackground: false),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ApplicationsDateSelector(
+                          selection: _selection,
+                          onSelectionChanged: _onDateSelectionChanged,
+                          referenceDate: widget.referenceDate,
+                        ),
+                        const SizedBox(width: AppSpacing.sm),
+                        IconButton(
+                          icon: const Icon(LucideIcons.refreshCw, size: 16),
+                          tooltip: 'Refresh Analytics',
+                          color: colors.textSecondary,
+                          onPressed: () => _loadAnalytics(isBackground: false),
+                        ),
+                      ],
                     ),
                   ],
-                ),
-              ],
+                );
+              },
             ),
             const SizedBox(height: AppSpacing.xl),
 
@@ -427,105 +462,139 @@ class _ApplicationsScreenState extends State<ApplicationsScreen> {
   }
 
   Widget _buildListControls(ThemeData theme, AppThemeColors colors) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: colors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: colors.surfaceSecondary),
-      ),
-      child: Row(
-        children: [
-          // Search Field
-          Expanded(
-            flex: 2,
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                hintText: 'Search applications by name...',
-                prefixIcon: const Icon(LucideIcons.search, size: 16),
-                suffixIcon: _searchController.text.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(LucideIcons.x, size: 14),
-                        onPressed: () {
-                          _searchController.clear();
-                          setState(() => _searchQuery = '');
-                        },
-                      )
-                    : null,
-                filled: true,
-                fillColor: colors.surfaceSecondary,
-                isDense: true,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide.none,
-                ),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isCompact = constraints.maxWidth < 750;
+
+        final searchBar = TextField(
+          controller: _searchController,
+          decoration: InputDecoration(
+            hintText: 'Search applications by name...',
+            prefixIcon: const Icon(LucideIcons.search, size: 16),
+            suffixIcon: _searchController.text.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(LucideIcons.x, size: 14),
+                    onPressed: () {
+                      _searchController.clear();
+                      setState(() => _searchQuery = '');
+                    },
+                  )
+                : null,
+            filled: true,
+            fillColor: colors.surfaceSecondary,
+            isDense: true,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide.none,
+            ),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          ),
+          onChanged: (val) => setState(() => _searchQuery = val),
+        );
+
+        final filterPills = Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildFilterPill('All', AppListFilter.all, colors),
+            const SizedBox(width: 4),
+            _buildFilterPill('Limited', AppListFilter.limited, colors),
+            const SizedBox(width: 4),
+            _buildFilterPill('Limit Reached', AppListFilter.limitReached, colors),
+          ],
+        );
+
+        final sortDropdown = Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          decoration: BoxDecoration(
+            color: colors.surfaceSecondary,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<AppListSort>(
+              value: _activeSort,
+              icon: const Icon(LucideIcons.chevronDown, size: 14),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: colors.textPrimary,
               ),
-              onChanged: (val) => setState(() => _searchQuery = val),
+              dropdownColor: colors.surface,
+              items: const [
+                DropdownMenuItem(
+                  value: AppListSort.mostUsed,
+                  child: Text('Most Used'),
+                ),
+                DropdownMenuItem(
+                  value: AppListSort.leastUsed,
+                  child: Text('Least Used'),
+                ),
+                DropdownMenuItem(
+                  value: AppListSort.nameAsc,
+                  child: Text('Name (A–Z)'),
+                ),
+              ],
+              onChanged: (val) {
+                if (val != null) {
+                  setState(() => _activeSort = val);
+                }
+              },
             ),
           ),
-          const SizedBox(width: AppSpacing.md),
+        );
 
-          // Filter Segmented Controls
-          Row(
+        if (isCompact) {
+          return Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: colors.surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: colors.surfaceSecondary),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                searchBar,
+                const SizedBox(height: AppSpacing.sm),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    filterPills,
+                    sortDropdown,
+                  ],
+                ),
+              ],
+            ),
+          );
+        }
+
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: colors.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: colors.surfaceSecondary),
+          ),
+          child: Row(
             children: [
-              _buildFilterPill('All', AppListFilter.all, colors),
-              const SizedBox(width: 4),
-              _buildFilterPill('Limited', AppListFilter.limited, colors),
-              const SizedBox(width: 4),
-              _buildFilterPill('Limit Reached', AppListFilter.limitReached, colors),
+              Expanded(
+                flex: 2,
+                child: searchBar,
+              ),
+              const SizedBox(width: AppSpacing.md),
+              filterPills,
+              const SizedBox(width: AppSpacing.md),
+              sortDropdown,
             ],
           ),
-          const SizedBox(width: AppSpacing.md),
-
-          // Sorting Dropdown
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            decoration: BoxDecoration(
-              color: colors.surfaceSecondary,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<AppListSort>(
-                value: _activeSort,
-                icon: const Icon(LucideIcons.chevronDown, size: 14),
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: colors.textPrimary,
-                ),
-                dropdownColor: colors.surface,
-                items: const [
-                  DropdownMenuItem(
-                    value: AppListSort.mostUsed,
-                    child: Text('Most Used'),
-                  ),
-                  DropdownMenuItem(
-                    value: AppListSort.leastUsed,
-                    child: Text('Least Used'),
-                  ),
-                  DropdownMenuItem(
-                    value: AppListSort.nameAsc,
-                    child: Text('Name (A–Z)'),
-                  ),
-                ],
-                onChanged: (val) {
-                  if (val != null) {
-                    setState(() => _activeSort = val);
-                  }
-                },
-              ),
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
   Widget _buildFilterPill(String label, AppListFilter filter, AppThemeColors colors) {
     final isSelected = _activeFilter == filter;
     return InkWell(
+      key: ValueKey('filter_pill_${filter.name}'),
       onTap: () => setState(() => _activeFilter = filter),
       borderRadius: BorderRadius.circular(8),
       child: AnimatedContainer(
@@ -692,16 +761,20 @@ class _ApplicationsScreenState extends State<ApplicationsScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(
-                              isLimitReached
-                                  ? 'Limit Reached'
-                                  : '${_formatDuration(remainingAllowance ?? Duration.zero)} left',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: isLimitReached ? Colors.redAccent : colors.primaryAccent,
+                            Flexible(
+                              child: Text(
+                                isLimitReached
+                                    ? 'Limit Reached'
+                                    : '${_formatDuration(remainingAllowance ?? Duration.zero)} left',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: isLimitReached ? Colors.redAccent : colors.primaryAccent,
+                                ),
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
+                            const SizedBox(width: 4),
                             Text(
                               'Max: ${_formatDuration(limit!.limitDuration)}',
                               style: TextStyle(

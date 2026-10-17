@@ -31,7 +31,7 @@ class ApplicationsDateSelector extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isCompact = constraints.maxWidth < 640;
+        final isCompact = constraints.maxWidth < 680;
 
         if (isCompact) {
           // Dropdown / Button popup
@@ -45,37 +45,41 @@ class ApplicationsDateSelector extends StatelessWidget {
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: colors.surfaceSecondary),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildPresetButton(
-                label: 'Today',
-                preset: DateFilterPreset.today,
-                isSelected: selection.preset == DateFilterPreset.today,
-                colors: colors,
-                onTap: () => onSelectionChanged(DateRangeSelection.today(_effectiveToday)),
-              ),
-              const SizedBox(width: 2),
-              _buildPresetButton(
-                label: 'Past 7 Days',
-                preset: DateFilterPreset.past7Days,
-                isSelected: selection.preset == DateFilterPreset.past7Days,
-                colors: colors,
-                onTap: () => onSelectionChanged(DateRangeSelection.past7Days(_effectiveToday)),
-              ),
-              const SizedBox(width: 2),
-              _buildPresetButton(
-                label: 'Past 30 Days',
-                preset: DateFilterPreset.past30Days,
-                isSelected: selection.preset == DateFilterPreset.past30Days,
-                colors: colors,
-                onTap: () => onSelectionChanged(DateRangeSelection.past30Days(_effectiveToday)),
-              ),
-              const SizedBox(width: 6),
-              Container(width: 1, height: 20, color: colors.surfaceSecondary),
-              const SizedBox(width: 6),
-              _buildCustomPickerTrigger(context, theme, colors),
-            ],
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildPresetButton(
+                  label: 'Today',
+                  preset: DateFilterPreset.today,
+                  isSelected: selection.preset == DateFilterPreset.today,
+                  colors: colors,
+                  onTap: () => onSelectionChanged(DateRangeSelection.today(_effectiveToday)),
+                ),
+                const SizedBox(width: 2),
+                _buildPresetButton(
+                  label: 'Past 7 Days',
+                  preset: DateFilterPreset.past7Days,
+                  isSelected: selection.preset == DateFilterPreset.past7Days,
+                  colors: colors,
+                  onTap: () => onSelectionChanged(DateRangeSelection.past7Days(_effectiveToday)),
+                ),
+                const SizedBox(width: 2),
+                _buildPresetButton(
+                  label: 'Past 30 Days',
+                  preset: DateFilterPreset.past30Days,
+                  isSelected: selection.preset == DateFilterPreset.past30Days,
+                  colors: colors,
+                  onTap: () => onSelectionChanged(DateRangeSelection.past30Days(_effectiveToday)),
+                ),
+                const SizedBox(width: 6),
+                Container(width: 1, height: 20, color: colors.surfaceSecondary),
+                const SizedBox(width: 6),
+                _buildCustomPickerTrigger(context, theme, colors),
+              ],
+            ),
           ),
         );
       },

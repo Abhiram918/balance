@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-import 'package:balance/core/models/app_limit.dart';
 import 'package:balance/core/models/app_session.dart';
 import 'package:balance/core/models/application_analytics_models.dart';
 import 'package:balance/core/services/application_analytics_service.dart';
@@ -19,7 +18,6 @@ void main() {
 
     // Fixed deterministic reference date: Wednesday, October 14, 2026 at 15:30
     final refDate = DateTime(2026, 10, 14, 15, 30);
-    final todayMidnight = DateTime(2026, 10, 14);
 
     setUp(() async {
       repository = UsageRepository(dbName: inMemoryDatabasePath);
@@ -274,6 +272,10 @@ void main() {
         ),
       ];
 
+      for (final s in sessions) {
+        await repository.insertSession(s);
+      }
+
       // Create a limit for Beta Editor (1 hour limit, so 2h usage means Limit Reached)
       await limitsService.createLimit(
         appName: 'Beta Editor',
@@ -285,6 +287,8 @@ void main() {
         appName: 'Alpha Browser',
         duration: const Duration(hours: 2),
       );
+
+      await limitsService.evaluateUsage();
 
       final selection = DateRangeSelection.today(refDate);
       final apps = analyticsService.aggregateAppList(
