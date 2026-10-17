@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../app/app.dart';
 import '../../app/theme/app_colors.dart';
 import '../../app/theme/app_spacing.dart';
-import '../../core/models/app_limit.dart';
 import '../../core/models/application_analytics_models.dart';
 import '../../core/services/application_analytics_service.dart';
 import '../../core/services/limits_service.dart';
@@ -566,7 +564,7 @@ class _ApplicationsScreenState extends State<ApplicationsScreen> {
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
         itemCount: apps.length,
-        separatorBuilder: (_, __) => Divider(
+        separatorBuilder: (context, index) => Divider(
           height: 1,
           thickness: 0.5,
           color: colors.surfaceSecondary,
