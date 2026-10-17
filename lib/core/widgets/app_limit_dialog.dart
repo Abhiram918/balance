@@ -747,6 +747,18 @@ class _AppLimitDialogState extends State<AppLimitDialog> {
     }
 
     if (apps.isEmpty) {
+      if (_scanError != null) {
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text(
+              _scanError!,
+              style: TextStyle(color: Colors.redAccent, fontSize: 12),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        );
+      }
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -872,7 +884,7 @@ class _AppLimitDialogState extends State<AppLimitDialog> {
           child: Image.file(
             File(iconPath),
             fit: BoxFit.contain,
-            errorBuilder: (_, __, ___) => _buildFallbackAppIcon(appName),
+            errorBuilder: (context, error, stackTrace) => _buildFallbackAppIcon(appName),
           ),
         ),
       );

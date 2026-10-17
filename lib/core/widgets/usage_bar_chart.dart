@@ -45,8 +45,6 @@ class UsageBarChart extends StatelessWidget {
     final minMaxY = isHourly ? 1.0 : 2.0;
     final maxY = max(minMaxY, (maxHours * 1.25).ceilToDouble());
 
-    final bool hasAnyUsage = totalUsage > Duration.zero;
-
     return Container(
       height: height,
       padding: const EdgeInsets.all(AppSpacing.lg),
@@ -119,7 +117,6 @@ class UsageBarChart extends StatelessWidget {
                               fitInsideHorizontally: true,
                               fitInsideVertically: true,
                               getTooltipColor: (_) => colors.surfaceSecondary,
-                              tooltipRoundedRadius: 8,
                               tooltipPadding: const EdgeInsets.symmetric(
                                 horizontal: 10,
                                 vertical: 6,
