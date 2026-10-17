@@ -11,7 +11,6 @@ import 'package:balance/core/services/usage_calculator.dart';
 import 'package:balance/core/services/usage_repository.dart';
 import 'package:balance/core/services/windows_usage_tracker.dart';
 import 'package:balance/core/widgets/app_shell.dart';
-import 'package:balance/core/widgets/activity_chart.dart';
 import 'package:balance/core/widgets/daily_summary_card.dart';
 import 'package:balance/core/widgets/overview_date_picker_dialog.dart';
 import 'package:balance/features/overview/overview_screen.dart';
@@ -1170,15 +1169,8 @@ void main() {
       expect(timelineFinder, findsOneWidget);
       expect(dailyActivityFinder, findsOneWidget);
 
-      final dailySummaryRect = tester.getRect(dailySummaryCardFinder);
-      final appsFinder = find.ancestor(of: find.text('All Applications Today'), matching: find.byType(Container)).first;
-      final appsRect = tester.getRect(appsFinder);
       final timelineRect = tester.getRect(timelineFinder);
       final dailyActivityRect = tester.getRect(dailyActivityFinder);
-      print('DEBUG: ActivityChart size: ${tester.getSize(find.byType(ActivityChart))}');
-      print('DEBUG: DailySummaryCard size: ${tester.getSize(dailySummaryCardFinder)}');
-      print('DEBUG: timelineRect=$timelineRect (height=${timelineRect.height})');
-      print('DEBUG: dailyActivityRect=$dailyActivityRect (height=${dailyActivityRect.height})');
 
       // Verify bottom edges align within 20px
       final bottomDifference = (timelineRect.bottom - dailyActivityRect.bottom).abs();
