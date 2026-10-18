@@ -359,9 +359,12 @@ class FocusService extends ChangeNotifier {
     }
 
     final duplicate = preset.copyWith(
-      id: null,
+      clearId: true,
       name: candidateName,
       isDefault: false,
+      blockedApps: preset.blockedApps
+          .map((a) => a.copyWith(clearId: true, clearPresetId: true))
+          .toList(),
       createdAt: _clock(),
       updatedAt: _clock(),
     );

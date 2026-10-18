@@ -35,13 +35,15 @@ class FocusPresetBlockedApp {
 
   FocusPresetBlockedApp copyWith({
     int? id,
+    bool clearId = false,
     int? presetId,
+    bool clearPresetId = false,
     String? appName,
     String? exePath,
   }) {
     return FocusPresetBlockedApp(
-      id: id ?? this.id,
-      presetId: presetId ?? this.presetId,
+      id: clearId ? null : (id ?? this.id),
+      presetId: clearPresetId ? null : (presetId ?? this.presetId),
       appName: appName ?? this.appName,
       exePath: exePath ?? this.exePath,
     );
@@ -164,6 +166,7 @@ class FocusPreset {
 
   FocusPreset copyWith({
     int? id,
+    bool clearId = false,
     String? name,
     Duration? focusDuration,
     Duration? shortBreakDuration,
@@ -180,7 +183,7 @@ class FocusPreset {
     DateTime? updatedAt,
   }) {
     return FocusPreset(
-      id: id ?? this.id,
+      id: clearId ? null : (id ?? this.id),
       name: name ?? this.name,
       focusDuration: focusDuration ?? this.focusDuration,
       shortBreakDuration: shortBreakDuration ?? this.shortBreakDuration,
