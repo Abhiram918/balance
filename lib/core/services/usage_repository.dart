@@ -3,6 +3,7 @@ import 'package:path/path.dart';
 import 'dart:io';
 import '../models/app_session.dart';
 import '../models/focus_session.dart';
+import '../models/focus_preset.dart';
 import '../models/app_limit.dart';
 
 class UsageRepository {
@@ -277,6 +278,9 @@ class UsageRepository {
             'startTime': s['startTime'],
             'endTime': s['endTime'],
             'completedNaturally': s['completedNaturally'],
+            if (s.containsKey('presetName')) 'presetName': s['presetName'],
+            if (s.containsKey('cycleIndex')) 'cycleIndex': s['cycleIndex'],
+            if (s.containsKey('interruptionReason')) 'interruptionReason': s['interruptionReason'],
           });
         }
       }
@@ -324,7 +328,10 @@ class UsageRepository {
     final db = await databaseFactory.openDatabase(
       path,
       options: OpenDatabaseOptions(
-        version: 5,
+        version: 6,
+        onConfigure: (db) async {
+          await db.execute('PRAGMA foreign_keys = ON');
+        },
         onCreate: _createDB,
         onUpgrade: _onUpgradeDB,
       ),
@@ -367,7 +374,10 @@ class UsageRepository {
         actualSeconds INTEGER NOT NULL,
         startTime INTEGER NOT NULL,
         endTime INTEGER NOT NULL,
-        completedNaturally INTEGER NOT NULL
+        completedNaturally INTEGER NOT NULL,
+        presetName TEXT,
+        cycleIndex INTEGER,
+        interruptionReason TEXT
       )
     ''');
 
@@ -383,9 +393,62 @@ class UsageRepository {
         targetSeconds INTEGER NOT NULL,
         startTime INTEGER NOT NULL,
         expectedEndTime INTEGER NOT NULL,
-        remainingSeconds INTEGER NOT NULL
+        remainingSeconds INTEGER NOT NULL,
+        presetId INTEGER,
+        presetName TEXT,
+        currentCycle INTEGER NOT NULL DEFAULT 1,
+        totalCycles INTEGER NOT NULL DEFAULT 4,
+        isLongBreak INTEGER NOT NULL DEFAULT 0,
+        lastTickTime INTEGER
       )
     ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS FocusPresets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        focusDurationSeconds INTEGER NOT NULL,
+        shortBreakDurationSeconds INTEGER NOT NULL,
+        longBreakDurationSeconds INTEGER NOT NULL,
+        cyclesBeforeLongBreak INTEGER NOT NULL DEFAULT 4,
+        autoStartBreaks INTEGER NOT NULL DEFAULT 0,
+        autoStartFocus INTEGER NOT NULL DEFAULT 0,
+        allowSkipBreak INTEGER NOT NULL DEFAULT 1,
+        soundEnabled INTEGER NOT NULL DEFAULT 1,
+        unblockDuringBreaks INTEGER NOT NULL DEFAULT 1,
+        isDefault INTEGER NOT NULL DEFAULT 0,
+        createdAt INTEGER NOT NULL,
+        updatedAt INTEGER NOT NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_focus_presets_name ON FocusPresets (name)
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS FocusPresetBlockedApps (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        presetId INTEGER NOT NULL,
+        appName TEXT NOT NULL,
+        exePath TEXT,
+        FOREIGN KEY (presetId) REFERENCES FocusPresets(id) ON DELETE CASCADE,
+        UNIQUE(presetId, appName)
+      )
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_preset_blocked_apps_preset ON FocusPresetBlockedApps (presetId)
+    ''');
+
+    // Seed default presets
+    for (final preset in FocusPreset.defaultPresets) {
+      await db.insert(
+        'FocusPresets',
+        preset.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
+    }
 
     await db.execute('''
       CREATE TABLE IF NOT EXISTS AppLimits (
@@ -498,6 +561,87 @@ class UsageRepository {
         ALTER TABLE AppLimits ADD COLUMN isEnforced INTEGER NOT NULL DEFAULT 0
       ''');
     }
+    if (oldVersion < 6) {
+      // 1. Create FocusPresets table
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS FocusPresets (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL UNIQUE,
+          focusDurationSeconds INTEGER NOT NULL,
+          shortBreakDurationSeconds INTEGER NOT NULL,
+          longBreakDurationSeconds INTEGER NOT NULL,
+          cyclesBeforeLongBreak INTEGER NOT NULL DEFAULT 4,
+          autoStartBreaks INTEGER NOT NULL DEFAULT 0,
+          autoStartFocus INTEGER NOT NULL DEFAULT 0,
+          allowSkipBreak INTEGER NOT NULL DEFAULT 1,
+          soundEnabled INTEGER NOT NULL DEFAULT 1,
+          unblockDuringBreaks INTEGER NOT NULL DEFAULT 1,
+          isDefault INTEGER NOT NULL DEFAULT 0,
+          createdAt INTEGER NOT NULL,
+          updatedAt INTEGER NOT NULL
+        )
+      ''');
+
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_focus_presets_name ON FocusPresets (name)
+      ''');
+
+      // 2. Create FocusPresetBlockedApps table
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS FocusPresetBlockedApps (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          presetId INTEGER NOT NULL,
+          appName TEXT NOT NULL,
+          exePath TEXT,
+          FOREIGN KEY (presetId) REFERENCES FocusPresets(id) ON DELETE CASCADE,
+          UNIQUE(presetId, appName)
+        )
+      ''');
+
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_preset_blocked_apps_preset ON FocusPresetBlockedApps (presetId)
+      ''');
+
+      // 3. Alter FocusSessions table with new metadata columns
+      await db.execute('''
+        ALTER TABLE FocusSessions ADD COLUMN presetName TEXT
+      ''');
+      await db.execute('''
+        ALTER TABLE FocusSessions ADD COLUMN cycleIndex INTEGER
+      ''');
+      await db.execute('''
+        ALTER TABLE FocusSessions ADD COLUMN interruptionReason TEXT
+      ''');
+
+      // 4. Alter ActiveFocus table with new Pomodoro / preset columns
+      await db.execute('''
+        ALTER TABLE ActiveFocus ADD COLUMN presetId INTEGER
+      ''');
+      await db.execute('''
+        ALTER TABLE ActiveFocus ADD COLUMN presetName TEXT
+      ''');
+      await db.execute('''
+        ALTER TABLE ActiveFocus ADD COLUMN currentCycle INTEGER NOT NULL DEFAULT 1
+      ''');
+      await db.execute('''
+        ALTER TABLE ActiveFocus ADD COLUMN totalCycles INTEGER NOT NULL DEFAULT 4
+      ''');
+      await db.execute('''
+        ALTER TABLE ActiveFocus ADD COLUMN isLongBreak INTEGER NOT NULL DEFAULT 0
+      ''');
+      await db.execute('''
+        ALTER TABLE ActiveFocus ADD COLUMN lastTickTime INTEGER
+      ''');
+
+      // 5. Seed default presets
+      for (final preset in FocusPreset.defaultPresets) {
+        await db.insert(
+          'FocusPresets',
+          preset.toMap(),
+          conflictAlgorithm: ConflictAlgorithm.ignore,
+        );
+      }
+    }
   }
 
   Future<AppSession> insertSession(AppSession session) async {
@@ -570,15 +714,7 @@ class UsageRepository {
   Future<FocusSessionRecord> insertFocusSession(FocusSessionRecord session) async {
     final db = await database;
     final id = await db.insert('FocusSessions', session.toMap());
-    return FocusSessionRecord(
-      id: id,
-      type: session.type,
-      plannedDuration: session.plannedDuration,
-      actualDuration: session.actualDuration,
-      startTime: session.startTime,
-      endTime: session.endTime,
-      completedNaturally: session.completedNaturally,
-    );
+    return session.copyWith(id: id);
   }
 
   Future<List<FocusSessionRecord>> getRecentFocusSessions({int limit = 20}) async {
@@ -784,6 +920,204 @@ class UsageRepository {
       }
     }
     return result;
+  }
+
+  // --- Focus Presets & Blocked Apps Persistence ---
+
+  Future<FocusPreset> insertFocusPreset(FocusPreset preset) async {
+    final db = await database;
+    return await db.transaction((txn) async {
+      if (preset.isDefault) {
+        await txn.update('FocusPresets', {'isDefault': 0});
+      }
+      final map = preset.toMap();
+      final id = await txn.insert('FocusPresets', map);
+
+      final insertedApps = <FocusPresetBlockedApp>[];
+      for (final app in preset.blockedApps) {
+        final appId = await txn.insert(
+          'FocusPresetBlockedApps',
+          app.toMap(overridePresetId: id),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+        insertedApps.add(app.copyWith(id: appId, presetId: id));
+      }
+      return preset.copyWith(id: id, blockedApps: insertedApps);
+    });
+  }
+
+  Future<void> updateFocusPreset(FocusPreset preset) async {
+    if (preset.id == null) {
+      throw ArgumentError('Cannot update preset without an id.');
+    }
+    final db = await database;
+    await db.transaction((txn) async {
+      if (preset.isDefault) {
+        await txn.update(
+          'FocusPresets',
+          {'isDefault': 0},
+          where: 'id != ?',
+          whereArgs: [preset.id],
+        );
+      }
+      final map = preset.toMap()..['updatedAt'] = DateTime.now().millisecondsSinceEpoch;
+      await txn.update(
+        'FocusPresets',
+        map,
+        where: 'id = ?',
+        whereArgs: [preset.id],
+      );
+
+      // Synchronize blocked apps
+      await txn.delete(
+        'FocusPresetBlockedApps',
+        where: 'presetId = ?',
+        whereArgs: [preset.id],
+      );
+      for (final app in preset.blockedApps) {
+        await txn.insert(
+          'FocusPresetBlockedApps',
+          app.toMap(overridePresetId: preset.id),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+    });
+  }
+
+  Future<void> deleteFocusPreset(int presetId) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.delete('FocusPresetBlockedApps', where: 'presetId = ?', whereArgs: [presetId]);
+      await txn.delete('FocusPresets', where: 'id = ?', whereArgs: [presetId]);
+    });
+  }
+
+  Future<List<FocusPreset>> getAllFocusPresets() async {
+    final db = await database;
+    final presetRows = await db.query(
+      'FocusPresets',
+      orderBy: 'isDefault DESC, name ASC',
+    );
+    if (presetRows.isEmpty) return [];
+
+    final appRows = await db.query(
+      'FocusPresetBlockedApps',
+      orderBy: 'appName ASC',
+    );
+
+    final appsByPreset = <int, List<FocusPresetBlockedApp>>{};
+    for (final row in appRows) {
+      final pid = row['presetId'] as int?;
+      if (pid != null) {
+        appsByPreset.putIfAbsent(pid, () => []).add(FocusPresetBlockedApp.fromMap(row));
+      }
+    }
+
+    return presetRows.map((row) {
+      final id = row['id'] as int?;
+      return FocusPreset.fromMap(
+        row,
+        blockedApps: id != null ? appsByPreset[id] ?? const [] : const [],
+      );
+    }).toList();
+  }
+
+  Future<FocusPreset?> getFocusPresetById(int id) async {
+    final db = await database;
+    final presetRows = await db.query(
+      'FocusPresets',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (presetRows.isEmpty) return null;
+
+    final appRows = await db.query(
+      'FocusPresetBlockedApps',
+      where: 'presetId = ?',
+      whereArgs: [id],
+      orderBy: 'appName ASC',
+    );
+    final apps = appRows.map((r) => FocusPresetBlockedApp.fromMap(r)).toList();
+    return FocusPreset.fromMap(presetRows.first, blockedApps: apps);
+  }
+
+  Future<FocusPreset?> getFocusPresetByName(String name) async {
+    final db = await database;
+    final presetRows = await db.query(
+      'FocusPresets',
+      where: 'LOWER(name) = ?',
+      whereArgs: [name.trim().toLowerCase()],
+      limit: 1,
+    );
+    if (presetRows.isEmpty) return null;
+
+    final id = presetRows.first['id'] as int?;
+    List<FocusPresetBlockedApp> apps = [];
+    if (id != null) {
+      final appRows = await db.query(
+        'FocusPresetBlockedApps',
+        where: 'presetId = ?',
+        whereArgs: [id],
+        orderBy: 'appName ASC',
+      );
+      apps = appRows.map((r) => FocusPresetBlockedApp.fromMap(r)).toList();
+    }
+    return FocusPreset.fromMap(presetRows.first, blockedApps: apps);
+  }
+
+  Future<FocusPreset?> getDefaultFocusPreset() async {
+    final db = await database;
+    final presetRows = await db.query(
+      'FocusPresets',
+      where: 'isDefault = 1',
+      limit: 1,
+    );
+    if (presetRows.isEmpty) {
+      final all = await getAllFocusPresets();
+      return all.isNotEmpty ? all.first : null;
+    }
+    final id = presetRows.first['id'] as int?;
+    List<FocusPresetBlockedApp> apps = [];
+    if (id != null) {
+      final appRows = await db.query(
+        'FocusPresetBlockedApps',
+        where: 'presetId = ?',
+        whereArgs: [id],
+        orderBy: 'appName ASC',
+      );
+      apps = appRows.map((r) => FocusPresetBlockedApp.fromMap(r)).toList();
+    }
+    return FocusPreset.fromMap(presetRows.first, blockedApps: apps);
+  }
+
+  Future<List<FocusPresetBlockedApp>> getBlockedAppsForPreset(int presetId) async {
+    final db = await database;
+    final appRows = await db.query(
+      'FocusPresetBlockedApps',
+      where: 'presetId = ?',
+      whereArgs: [presetId],
+      orderBy: 'appName ASC',
+    );
+    return appRows.map((r) => FocusPresetBlockedApp.fromMap(r)).toList();
+  }
+
+  Future<void> setBlockedAppsForPreset(int presetId, List<FocusPresetBlockedApp> apps) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.delete(
+        'FocusPresetBlockedApps',
+        where: 'presetId = ?',
+        whereArgs: [presetId],
+      );
+      for (final app in apps) {
+        await txn.insert(
+          'FocusPresetBlockedApps',
+          app.toMap(overridePresetId: presetId),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+    });
   }
 }
 
