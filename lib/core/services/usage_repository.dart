@@ -484,6 +484,19 @@ class UsageRepository {
     ''');
   }
 
+  Future<bool> _tableExists(DatabaseExecutor db, String tableName) async {
+    final res = await db.rawQuery(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+      [tableName],
+    );
+    return res.isNotEmpty;
+  }
+
+  Future<bool> _columnExists(DatabaseExecutor db, String table, String column) async {
+    final info = await db.rawQuery('PRAGMA table_info($table)');
+    return info.any((row) => (row['name'] as String?)?.toLowerCase() == column.toLowerCase());
+  }
+
   Future<void> _onUpgradeDB(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
       await db.execute('''
@@ -557,9 +570,13 @@ class UsageRepository {
       ''');
     }
     if (oldVersion < 5) {
-      await db.execute('''
-        ALTER TABLE AppLimits ADD COLUMN isEnforced INTEGER NOT NULL DEFAULT 0
-      ''');
+      if (await _tableExists(db, 'AppLimits')) {
+        if (!await _columnExists(db, 'AppLimits', 'isEnforced')) {
+          await db.execute('''
+            ALTER TABLE AppLimits ADD COLUMN isEnforced INTEGER NOT NULL DEFAULT 0
+          ''');
+        }
+      }
     }
     if (oldVersion < 6) {
       // 1. Create FocusPresets table
@@ -602,36 +619,78 @@ class UsageRepository {
         CREATE INDEX IF NOT EXISTS idx_preset_blocked_apps_preset ON FocusPresetBlockedApps (presetId)
       ''');
 
-      // 3. Alter FocusSessions table with new metadata columns
-      await db.execute('''
-        ALTER TABLE FocusSessions ADD COLUMN presetName TEXT
-      ''');
-      await db.execute('''
-        ALTER TABLE FocusSessions ADD COLUMN cycleIndex INTEGER
-      ''');
-      await db.execute('''
-        ALTER TABLE FocusSessions ADD COLUMN interruptionReason TEXT
-      ''');
+      // 3. FocusSessions table: create if missing, or alter if existing
+      final hasFocusSessions = await _tableExists(db, 'FocusSessions');
+      if (!hasFocusSessions) {
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS FocusSessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            type TEXT NOT NULL,
+            plannedSeconds INTEGER NOT NULL,
+            actualSeconds INTEGER NOT NULL,
+            startTime INTEGER NOT NULL,
+            endTime INTEGER NOT NULL,
+            completedNaturally INTEGER NOT NULL,
+            presetName TEXT,
+            cycleIndex INTEGER,
+            interruptionReason TEXT
+          )
+        ''');
+        await db.execute('''
+          CREATE INDEX IF NOT EXISTS idx_focus_sessions_time ON FocusSessions (startTime DESC)
+        ''');
+      } else {
+        if (!await _columnExists(db, 'FocusSessions', 'presetName')) {
+          await db.execute('ALTER TABLE FocusSessions ADD COLUMN presetName TEXT');
+        }
+        if (!await _columnExists(db, 'FocusSessions', 'cycleIndex')) {
+          await db.execute('ALTER TABLE FocusSessions ADD COLUMN cycleIndex INTEGER');
+        }
+        if (!await _columnExists(db, 'FocusSessions', 'interruptionReason')) {
+          await db.execute('ALTER TABLE FocusSessions ADD COLUMN interruptionReason TEXT');
+        }
+      }
 
-      // 4. Alter ActiveFocus table with new Pomodoro / preset columns
-      await db.execute('''
-        ALTER TABLE ActiveFocus ADD COLUMN presetId INTEGER
-      ''');
-      await db.execute('''
-        ALTER TABLE ActiveFocus ADD COLUMN presetName TEXT
-      ''');
-      await db.execute('''
-        ALTER TABLE ActiveFocus ADD COLUMN currentCycle INTEGER NOT NULL DEFAULT 1
-      ''');
-      await db.execute('''
-        ALTER TABLE ActiveFocus ADD COLUMN totalCycles INTEGER NOT NULL DEFAULT 4
-      ''');
-      await db.execute('''
-        ALTER TABLE ActiveFocus ADD COLUMN isLongBreak INTEGER NOT NULL DEFAULT 0
-      ''');
-      await db.execute('''
-        ALTER TABLE ActiveFocus ADD COLUMN lastTickTime INTEGER
-      ''');
+      // 4. ActiveFocus table: create if missing, or alter if existing
+      final hasActiveFocus = await _tableExists(db, 'ActiveFocus');
+      if (!hasActiveFocus) {
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS ActiveFocus (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            type TEXT NOT NULL,
+            status TEXT NOT NULL,
+            targetSeconds INTEGER NOT NULL,
+            startTime INTEGER NOT NULL,
+            expectedEndTime INTEGER NOT NULL,
+            remainingSeconds INTEGER NOT NULL,
+            presetId INTEGER,
+            presetName TEXT,
+            currentCycle INTEGER NOT NULL DEFAULT 1,
+            totalCycles INTEGER NOT NULL DEFAULT 4,
+            isLongBreak INTEGER NOT NULL DEFAULT 0,
+            lastTickTime INTEGER
+          )
+        ''');
+      } else {
+        if (!await _columnExists(db, 'ActiveFocus', 'presetId')) {
+          await db.execute('ALTER TABLE ActiveFocus ADD COLUMN presetId INTEGER');
+        }
+        if (!await _columnExists(db, 'ActiveFocus', 'presetName')) {
+          await db.execute('ALTER TABLE ActiveFocus ADD COLUMN presetName TEXT');
+        }
+        if (!await _columnExists(db, 'ActiveFocus', 'currentCycle')) {
+          await db.execute('ALTER TABLE ActiveFocus ADD COLUMN currentCycle INTEGER NOT NULL DEFAULT 1');
+        }
+        if (!await _columnExists(db, 'ActiveFocus', 'totalCycles')) {
+          await db.execute('ALTER TABLE ActiveFocus ADD COLUMN totalCycles INTEGER NOT NULL DEFAULT 4');
+        }
+        if (!await _columnExists(db, 'ActiveFocus', 'isLongBreak')) {
+          await db.execute('ALTER TABLE ActiveFocus ADD COLUMN isLongBreak INTEGER NOT NULL DEFAULT 0');
+        }
+        if (!await _columnExists(db, 'ActiveFocus', 'lastTickTime')) {
+          await db.execute('ALTER TABLE ActiveFocus ADD COLUMN lastTickTime INTEGER');
+        }
+      }
 
       // 5. Seed default presets
       for (final preset in FocusPreset.defaultPresets) {
