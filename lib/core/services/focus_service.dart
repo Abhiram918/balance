@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../models/focus_preset.dart';
 import '../models/focus_session.dart';
+import 'app_enforcement_service.dart';
 import 'focus_notification_service.dart';
 import 'usage_repository.dart';
 
@@ -10,6 +11,7 @@ import 'usage_repository.dart';
 class FocusService extends ChangeNotifier {
   final UsageRepository repository;
   final FocusNotificationService? notificationService;
+  AppEnforcementService? _enforcementService;
   DateTime Function() _clock;
 
   FocusSessionType _sessionType = FocusSessionType.focus;
@@ -40,6 +42,7 @@ class FocusService extends ChangeNotifier {
   Duration _activeFocusDuration = const Duration(minutes: 25);
   Duration _activeShortBreakDuration = const Duration(minutes: 5);
   Duration _activeLongBreakDuration = const Duration(minutes: 15);
+  List<FocusPresetBlockedApp> _activeBlockedApps = const [];
 
   Timer? _ticker;
   bool _isFinalizing = false;
@@ -72,12 +75,21 @@ class FocusService extends ChangeNotifier {
   FocusService({
     required this.repository,
     this.notificationService,
+    AppEnforcementService? enforcementService,
     DateTime Function()? clock,
-  }) : _clock = clock ?? DateTime.now;
+  })  : _enforcementService = enforcementService,
+        _clock = clock ?? DateTime.now;
 
   // For deterministic testing
   void setClock(DateTime Function() clock) {
     _clock = clock;
+  }
+
+  AppEnforcementService? get enforcementService => _enforcementService;
+
+  void setEnforcementService(AppEnforcementService? service) {
+    _enforcementService = service;
+    _syncEnforcement();
   }
 
   // Getters
@@ -93,11 +105,39 @@ class FocusService extends ChangeNotifier {
   // Preset getters
   List<FocusPreset> get presets => List.unmodifiable(_presets);
   FocusPreset? get selectedPreset => _selectedPreset;
+  List<FocusPresetBlockedApp> get activeBlockedApps => List.unmodifiable(_activeBlockedApps);
 
   // Pomodoro cycle getters
   int get currentCycle => _currentCycle;
   int get totalCycles => _totalCycles;
   bool get isLongBreak => _isLongBreak;
+
+  /// Whether focus application restrictions should currently be actively enforced.
+  bool get shouldEnforceFocusRestrictions {
+    if (_status != FocusStatus.running) return false;
+    if (_sessionType == FocusSessionType.focus) return true;
+    if (_sessionType == FocusSessionType.breakSession) {
+      // If unblockDuringBreaks is true, temporarily suspend focus restrictions during breaks.
+      // If unblockDuringBreaks is false, keep selected apps blocked during breaks.
+      return !unblockDuringBreaks;
+    }
+    return false;
+  }
+
+  void _syncEnforcement() {
+    if (_enforcementService == null) return;
+    if (shouldEnforceFocusRestrictions) {
+      _enforcementService!.setFocusRestrictions(
+        blockedApps: _activeBlockedApps,
+        presetName: _activePresetName ?? _selectedPreset?.name,
+        remainingDuration: _remainingDuration,
+        isEnforcing: true,
+        closeRunningNow: true,
+      );
+    } else {
+      _enforcementService!.clearFocusRestrictions();
+    }
+  }
 
   // Configuration getters reflecting active snapshot during session, or selected preset when idle
   bool get autoStartBreaks => isRunning || isPaused
@@ -235,6 +275,7 @@ class FocusService extends ChangeNotifier {
       _activeFocusDuration = _selectedPreset?.focusDuration ?? (active.type == FocusSessionType.focus ? active.targetDuration : const Duration(minutes: 25));
       _activeShortBreakDuration = _selectedPreset?.shortBreakDuration ?? const Duration(minutes: 5);
       _activeLongBreakDuration = _selectedPreset?.longBreakDuration ?? const Duration(minutes: 15);
+      _activeBlockedApps = List.unmodifiable(_selectedPreset?.blockedApps ?? const []);
 
       if (active.status == FocusStatus.running) {
         final now = _clock();
@@ -289,6 +330,7 @@ class FocusService extends ChangeNotifier {
       _remainingDuration = _targetDuration;
     }
 
+    _syncEnforcement();
     notifyListeners();
   }
 
@@ -526,8 +568,10 @@ class FocusService extends ChangeNotifier {
     _activeFocusDuration = _selectedPreset?.focusDuration ?? _targetDuration;
     _activeShortBreakDuration = _selectedPreset?.shortBreakDuration ?? const Duration(minutes: 5);
     _activeLongBreakDuration = _selectedPreset?.longBreakDuration ?? const Duration(minutes: 15);
+    _activeBlockedApps = List.unmodifiable(_selectedPreset?.blockedApps ?? const []);
 
     _startTicker();
+    _syncEnforcement();
     notifyListeners();
 
     final activeState = ActiveFocusState(
@@ -569,6 +613,7 @@ class FocusService extends ChangeNotifier {
     }
 
     _status = FocusStatus.paused;
+    _syncEnforcement();
     notifyListeners();
 
     final activeState = ActiveFocusState(
@@ -597,6 +642,7 @@ class FocusService extends ChangeNotifier {
     _status = FocusStatus.running;
 
     _startTicker();
+    _syncEnforcement();
     notifyListeners();
 
     final activeState = ActiveFocusState(
@@ -655,6 +701,8 @@ class FocusService extends ChangeNotifier {
     _startTime = null;
     _expectedEndTime = null;
     _lastCompletedSession = null;
+    _activeBlockedApps = const [];
+    _syncEnforcement();
     notifyListeners();
 
     await _enqueueDbOp(() async {
@@ -734,6 +782,7 @@ class FocusService extends ChangeNotifier {
     _startTime = null;
     _expectedEndTime = null;
     _lastCompletedSession = null;
+    _syncEnforcement();
     notifyListeners();
 
     await _enqueueDbOp(() async {
@@ -751,6 +800,8 @@ class FocusService extends ChangeNotifier {
     _startTime = null;
     _expectedEndTime = null;
     _lastCompletedSession = null;
+    _activeBlockedApps = const [];
+    _syncEnforcement();
     notifyListeners();
     await _enqueueDbOp(() => repository.clearActiveFocusState());
   }
@@ -769,6 +820,8 @@ class FocusService extends ChangeNotifier {
     _startTime = null;
     _expectedEndTime = null;
     _lastCompletedSession = null;
+    _activeBlockedApps = const [];
+    _syncEnforcement();
     notifyListeners();
     await _enqueueDbOp(() => repository.clearActiveFocusState());
   }
@@ -790,6 +843,7 @@ class FocusService extends ChangeNotifier {
     if (_status == FocusStatus.running) {
       await pause();
     }
+    _enforcementService?.clearFocusRestrictions();
     await pendingDbOp;
   }
 
@@ -912,6 +966,7 @@ class FocusService extends ChangeNotifier {
       }
     }
 
+    _syncEnforcement();
     notifyListeners();
 
     await _enqueueDbOp(() async {
@@ -932,6 +987,7 @@ class FocusService extends ChangeNotifier {
           _expectedEndTime = now.add(_targetDuration);
           _status = FocusStatus.running;
           _startTicker();
+          _syncEnforcement();
 
           final nextActiveState = ActiveFocusState(
             type: _sessionType,
@@ -985,6 +1041,7 @@ class FocusService extends ChangeNotifier {
     _isDisposed = true;
     _ticker?.cancel();
     _ticker = null;
+    _enforcementService?.clearFocusRestrictions();
     super.dispose();
   }
 }

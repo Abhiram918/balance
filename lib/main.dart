@@ -20,9 +20,14 @@ void main() async {
   final notificationService = FocusNotificationService(settingsService: settingsService);
   await notificationService.init();
 
+  final enforcementService = AppEnforcementService(
+    notificationService: notificationService,
+  );
+
   final focusService = FocusService(
     repository: repository,
     notificationService: notificationService,
+    enforcementService: enforcementService,
   );
   await focusService.init();
 
@@ -36,8 +41,6 @@ void main() async {
   tracker.setIdleThreshold(Duration(minutes: settingsService.idleTimeoutMinutes.toInt()));
   await tracker.init();
   tracker.start();
-
-  final enforcementService = AppEnforcementService();
 
   final limitsService = LimitsService(
     repository: repository,

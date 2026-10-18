@@ -2,11 +2,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../app/app.dart';
 import '../models/app_block_event.dart';
+import '../services/app_enforcement_service.dart';
 import '../services/limits_service.dart';
 import 'app_block_dialog.dart';
 
-/// Top-level overlay manager that listens for application limit block events
-/// and presents the [AppBlockDialog].
+/// Top-level overlay manager that listens for application restriction events
+/// (daily limits and focus mode blocks) and presents the [AppBlockDialog].
 ///
 /// Ensures:
 /// - Valid BuildContext is always used for presentation.
@@ -16,11 +17,13 @@ import 'app_block_dialog.dart';
 /// - Subscriptions are properly disposed without leaks.
 class AppBlockDialogManager extends StatefulWidget {
   final LimitsService? limitsService;
+  final AppEnforcementService? enforcementService;
   final Widget child;
 
   const AppBlockDialogManager({
     super.key,
     this.limitsService,
+    this.enforcementService,
     required this.child,
   });
 
@@ -30,7 +33,7 @@ class AppBlockDialogManager extends StatefulWidget {
 
 class _AppBlockDialogManagerState extends State<AppBlockDialogManager> {
   StreamSubscription<AppBlockEvent>? _subscription;
-  LimitsService? _activeService;
+  Stream<AppBlockEvent>? _activeStream;
   bool _isDialogOpen = false;
   String? _currentBlockedAppName;
 
@@ -43,17 +46,33 @@ class _AppBlockDialogManagerState extends State<AppBlockDialogManager> {
   @override
   void didUpdateWidget(covariant AppBlockDialogManager oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.limitsService != widget.limitsService) {
+    if (oldWidget.limitsService != widget.limitsService ||
+        oldWidget.enforcementService != widget.enforcementService) {
       _updateSubscription();
     }
   }
 
   void _updateSubscription() {
-    final service = widget.limitsService ?? LimitsProvider.of(context);
-    if (_activeService != service) {
+    Stream<AppBlockEvent>? stream;
+    if (widget.enforcementService != null) {
+      stream = widget.enforcementService!.blockEvents;
+    } else if (widget.limitsService != null) {
+      stream = widget.limitsService!.blockEvents;
+    } else {
+      try {
+        final provider = LimitsProvider.of(context);
+        stream = provider.blockEvents;
+      } catch (_) {
+        stream = null;
+      }
+    }
+
+    if (_activeStream != stream) {
       _subscription?.cancel();
-      _activeService = service;
-      _subscription = service.blockEvents.listen(_handleBlockEvent);
+      _activeStream = stream;
+      if (stream != null) {
+        _subscription = stream.listen(_handleBlockEvent);
+      }
     }
   }
 
