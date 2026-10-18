@@ -46,7 +46,6 @@ void main() {
       await settingsService.init();
 
       tracker = WindowsUsageTracker(repository: repository);
-      await tracker.init();
 
       focusService = FocusService(repository: repository, clock: clock);
       await focusService.init();
@@ -70,7 +69,6 @@ void main() {
       }
       await focusService.pendingDbOp;
       focusService.dispose();
-      tracker.stop();
       await repository.close();
       try {
         await tempDir.delete(recursive: true);
@@ -186,19 +184,24 @@ void main() {
 
       // Attempt saving without name -> shows validation error
       await tester.tap(find.text('Create Preset'));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
       expect(find.text('Preset name cannot be empty.'), findsOneWidget);
 
       // Enter duplicate name ignoring case/whitespace
       await tester.enterText(find.widgetWithText(TextFormField, 'Preset Name *'), '   standard pomodoro   ');
+      await tester.pump(const Duration(milliseconds: 50));
       await tester.tap(find.text('Create Preset'));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
       expect(find.textContaining('already exists'), findsOneWidget);
 
       // Enter valid unique name
       await tester.enterText(find.widgetWithText(TextFormField, 'Preset Name *'), 'Morning Code Sprint');
+      await tester.pump(const Duration(milliseconds: 50));
       await tester.tap(find.text('Create Preset'));
-      await focusService.pendingDbOp;
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
       await tester.pumpAndSettle();
 
       // Verify new preset exists and appears in the list
@@ -246,8 +249,10 @@ void main() {
       // Attempt adding protected Balance process
       await tester.enterText(find.widgetWithText(TextField, 'Application Name *'), 'Balance');
       await tester.enterText(find.widgetWithText(TextField, 'Executable Name or Path (Optional)'), 'balance.exe');
+      await tester.pump(const Duration(milliseconds: 50));
       await tester.tap(find.text('Add to Block List'));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
 
       // Must be rejected
       expect(find.text('Protected Windows apps and Balance cannot be blocked.'), findsOneWidget);
@@ -255,11 +260,15 @@ void main() {
       // Now add valid custom application
       await tester.enterText(find.widgetWithText(TextField, 'Application Name *'), 'Minecraft');
       await tester.enterText(find.widgetWithText(TextField, 'Executable Name or Path (Optional)'), 'minecraft.exe');
+      await tester.pump(const Duration(milliseconds: 50));
       await tester.tap(find.text('Add to Block List'));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
 
       // Tap Done
       await tester.tap(find.textContaining('Done'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
       await tester.pumpAndSettle();
 
       // Verify chips appear in Preset Dialog

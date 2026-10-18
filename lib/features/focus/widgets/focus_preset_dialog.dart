@@ -481,13 +481,7 @@ class _FocusPresetDialogState extends State<FocusPresetDialog> {
         FilledButton(
           style: FilledButton.styleFrom(backgroundColor: colors.primaryAccent),
           onPressed: _isSaving ? null : _savePreset,
-          child: _isSaving
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                )
-              : Text(_isEditing ? 'Save Changes' : 'Create Preset'),
+          child: Text(_isSaving ? 'Saving...' : (_isEditing ? 'Save Changes' : 'Create Preset')),
         ),
       ],
     );
