@@ -28,6 +28,7 @@ class FocusNotificationService {
   Future<bool> notifySessionCompleted({
     required FocusSessionType type,
     required bool completedNaturally,
+    bool soundEnabled = true,
   }) async {
     // Respect user's notification setting
     if (settingsService != null && !settingsService!.notifications) {
@@ -48,7 +49,7 @@ class FocusNotificationService {
     }
 
     // Audible alert using Win32 API
-    if (Platform.isWindows) {
+    if (soundEnabled && Platform.isWindows) {
       try {
         MessageBeep(MB_ICONASTERISK);
       } catch (_) {}

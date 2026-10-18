@@ -12,6 +12,7 @@ class FakeNotificationService extends FocusNotificationService {
   int notifyCount = 0;
   FocusSessionType? lastType;
   bool? lastCompletedNaturally;
+  bool? lastSoundEnabled;
 
   FakeNotificationService({super.settingsService});
 
@@ -19,6 +20,7 @@ class FakeNotificationService extends FocusNotificationService {
   Future<bool> notifySessionCompleted({
     required FocusSessionType type,
     required bool completedNaturally,
+    bool soundEnabled = true,
   }) async {
     if (settingsService != null && !settingsService!.notifications) {
       return false;
@@ -26,6 +28,7 @@ class FakeNotificationService extends FocusNotificationService {
     notifyCount++;
     lastType = type;
     lastCompletedNaturally = completedNaturally;
+    lastSoundEnabled = soundEnabled;
     return true;
   }
 }
