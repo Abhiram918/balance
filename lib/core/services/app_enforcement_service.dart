@@ -226,7 +226,9 @@ class AppEnforcementService extends ChangeNotifier {
   /// Discovers and closes running instances of all currently active focus-blocked apps.
   Future<void> enforceAllFocusApps() async {
     if (!_isFocusEnforcing) return;
-    for (final app in _focusBlockedApps) {
+    final targets = List<FocusPresetBlockedApp>.of(_focusBlockedApps);
+    for (final app in targets) {
+      if (!_isFocusEnforcing) break;
       await _closeProcessesForApp(
         appName: app.appName,
         exePath: app.exePath,

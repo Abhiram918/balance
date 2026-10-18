@@ -184,8 +184,7 @@ void main() {
     setUp(() async {
       tempDir = await Directory.systemTemp.createTemp('focus_enforcement_test_');
       dbPath = '${tempDir.path}${Platform.pathSeparator}test.db';
-      repository = UsageRepository(databasePath: dbPath);
-      await repository.initializeDatabase();
+      repository = UsageRepository(dbName: dbPath);
 
       simulatedTime = DateTime(2026, 10, 18, 10, 0, 0);
 
@@ -242,13 +241,16 @@ void main() {
 
       // Create a Focus preset blocking Discord and Steam
       final focusPreset = await focusService.createPreset(
-        name: 'Work Sprint',
-        focusDuration: const Duration(minutes: 25),
-        shortBreakDuration: const Duration(minutes: 5),
-        blockedApps: [
-          const FocusPresetBlockedApp(appName: 'Discord', exePath: r'C:\Discord\Discord.exe'),
-          const FocusPresetBlockedApp(appName: 'Steam', exePath: r'C:\Steam\steam.exe'),
-        ],
+        FocusPreset(
+          name: 'Work Sprint',
+          focusDuration: const Duration(minutes: 25),
+          shortBreakDuration: const Duration(minutes: 5),
+          longBreakDuration: const Duration(minutes: 15),
+          blockedApps: [
+            const FocusPresetBlockedApp(appName: 'Discord', exePath: r'C:\Discord\Discord.exe'),
+            const FocusPresetBlockedApp(appName: 'Steam', exePath: r'C:\Steam\steam.exe'),
+          ],
+        ),
       );
 
       focusService.selectPreset(focusPreset);
@@ -288,12 +290,15 @@ void main() {
       await enforcementService.enforceLimit(dailyLimit);
 
       final preset = await focusService.createPreset(
-        name: 'Midnight Session',
-        focusDuration: const Duration(minutes: 45),
-        shortBreakDuration: const Duration(minutes: 5),
-        blockedApps: [
-          const FocusPresetBlockedApp(appName: 'YouTube', exePath: r'C:\Browser\chrome.exe'),
-        ],
+        FocusPreset(
+          name: 'Midnight Session',
+          focusDuration: const Duration(minutes: 45),
+          shortBreakDuration: const Duration(minutes: 5),
+          longBreakDuration: const Duration(minutes: 15),
+          blockedApps: [
+            const FocusPresetBlockedApp(appName: 'YouTube', exePath: r'C:\Browser\chrome.exe'),
+          ],
+        ),
       );
       focusService.selectPreset(preset);
       await focusService.start();
@@ -341,14 +346,17 @@ void main() {
 
     test('4. Break policy: unblockDuringBreaks: true temporarily suspends focus restrictions during break', () async {
       final preset = await focusService.createPreset(
-        name: 'Normal Pomodoro',
-        focusDuration: const Duration(minutes: 25),
-        shortBreakDuration: const Duration(minutes: 5),
-        unblockDuringBreaks: true,
-        autoStartBreaks: true,
-        blockedApps: [
-          const FocusPresetBlockedApp(appName: 'Discord', exePath: r'C:\Discord\Discord.exe'),
-        ],
+        FocusPreset(
+          name: 'Normal Pomodoro',
+          focusDuration: const Duration(minutes: 25),
+          shortBreakDuration: const Duration(minutes: 5),
+          longBreakDuration: const Duration(minutes: 15),
+          unblockDuringBreaks: true,
+          autoStartBreaks: true,
+          blockedApps: [
+            const FocusPresetBlockedApp(appName: 'Discord', exePath: r'C:\Discord\Discord.exe'),
+          ],
+        ),
       );
 
       focusService.selectPreset(preset);
@@ -384,14 +392,17 @@ void main() {
 
     test('5. Break policy: unblockDuringBreaks: false continues enforcing focus restrictions during break', () async {
       final preset = await focusService.createPreset(
-        name: 'Strict Focus',
-        focusDuration: const Duration(minutes: 25),
-        shortBreakDuration: const Duration(minutes: 5),
-        unblockDuringBreaks: false, // Apps stay blocked during breaks
-        autoStartBreaks: true,
-        blockedApps: [
-          const FocusPresetBlockedApp(appName: 'Gaming', exePath: r'C:\Games\game.exe'),
-        ],
+        FocusPreset(
+          name: 'Strict Focus',
+          focusDuration: const Duration(minutes: 25),
+          shortBreakDuration: const Duration(minutes: 5),
+          longBreakDuration: const Duration(minutes: 15),
+          unblockDuringBreaks: false, // Apps stay blocked during breaks
+          autoStartBreaks: true,
+          blockedApps: [
+            const FocusPresetBlockedApp(appName: 'Gaming', exePath: r'C:\Games\game.exe'),
+          ],
+        ),
       );
 
       focusService.selectPreset(preset);
@@ -414,13 +425,16 @@ void main() {
 
     test('6. Session lifecycle transitions: pause, resume, stop, reset, skipBreak, and restart', () async {
       final preset = await focusService.createPreset(
-        name: 'Cycle Ops',
-        focusDuration: const Duration(minutes: 25),
-        shortBreakDuration: const Duration(minutes: 5),
-        unblockDuringBreaks: true,
-        blockedApps: [
-          const FocusPresetBlockedApp(appName: 'Reddit'),
-        ],
+        FocusPreset(
+          name: 'Cycle Ops',
+          focusDuration: const Duration(minutes: 25),
+          shortBreakDuration: const Duration(minutes: 5),
+          longBreakDuration: const Duration(minutes: 15),
+          unblockDuringBreaks: true,
+          blockedApps: [
+            const FocusPresetBlockedApp(appName: 'Reddit'),
+          ],
+        ),
       );
 
       focusService.selectPreset(preset);
@@ -453,12 +467,15 @@ void main() {
 
     test('7. Running session snapshot isolation: Modifying or deleting preset while running preserves active blocked apps', () async {
       final preset = await focusService.createPreset(
-        name: 'Snapshot Test',
-        focusDuration: const Duration(minutes: 25),
-        shortBreakDuration: const Duration(minutes: 5),
-        blockedApps: [
-          const FocusPresetBlockedApp(appName: 'OriginalBlockedApp'),
-        ],
+        FocusPreset(
+          name: 'Snapshot Test',
+          focusDuration: const Duration(minutes: 25),
+          shortBreakDuration: const Duration(minutes: 5),
+          longBreakDuration: const Duration(minutes: 15),
+          blockedApps: [
+            const FocusPresetBlockedApp(appName: 'OriginalBlockedApp'),
+          ],
+        ),
       );
 
       focusService.selectPreset(preset);
@@ -501,12 +518,15 @@ void main() {
       processManager.processes.addAll([p1, p2]);
 
       final preset = await focusService.createPreset(
-        name: 'Auto Close',
-        focusDuration: const Duration(minutes: 25),
-        shortBreakDuration: const Duration(minutes: 5),
-        blockedApps: [
-          const FocusPresetBlockedApp(appName: 'Discord', exePath: r'C:\Discord\Discord.exe'),
-        ],
+        FocusPreset(
+          name: 'Auto Close',
+          focusDuration: const Duration(minutes: 25),
+          shortBreakDuration: const Duration(minutes: 5),
+          longBreakDuration: const Duration(minutes: 15),
+          blockedApps: [
+            const FocusPresetBlockedApp(appName: 'Discord', exePath: r'C:\Discord\Discord.exe'),
+          ],
+        ),
       );
 
       focusService.selectPreset(preset);
@@ -520,12 +540,15 @@ void main() {
 
     test('9. Foreground detection and notification deduplication: Throttles repeat notifications within 30s', () async {
       final preset = await focusService.createPreset(
-        name: 'Notif Throttle',
-        focusDuration: const Duration(minutes: 25),
-        shortBreakDuration: const Duration(minutes: 5),
-        blockedApps: [
-          const FocusPresetBlockedApp(appName: 'Telegram', exePath: r'C:\Telegram\Telegram.exe'),
-        ],
+        FocusPreset(
+          name: 'Notif Throttle',
+          focusDuration: const Duration(minutes: 25),
+          shortBreakDuration: const Duration(minutes: 5),
+          longBreakDuration: const Duration(minutes: 15),
+          blockedApps: [
+            const FocusPresetBlockedApp(appName: 'Telegram', exePath: r'C:\Telegram\Telegram.exe'),
+          ],
+        ),
       );
 
       focusService.selectPreset(preset);
@@ -566,12 +589,15 @@ void main() {
       await settingsService.setNotifications(false);
 
       final preset = await focusService.createPreset(
-        name: 'Silent Preset',
-        focusDuration: const Duration(minutes: 25),
-        shortBreakDuration: const Duration(minutes: 5),
-        blockedApps: [
-          const FocusPresetBlockedApp(appName: 'Slack'),
-        ],
+        FocusPreset(
+          name: 'Silent Preset',
+          focusDuration: const Duration(minutes: 25),
+          shortBreakDuration: const Duration(minutes: 5),
+          longBreakDuration: const Duration(minutes: 15),
+          blockedApps: [
+            const FocusPresetBlockedApp(appName: 'Slack'),
+          ],
+        ),
       );
 
       focusService.selectPreset(preset);
@@ -590,12 +616,15 @@ void main() {
 
     test('11. Crash / Restart Recovery: Restoring running focus session reinstates enforcement', () async {
       final preset = await focusService.createPreset(
-        name: 'Crash Recovery',
-        focusDuration: const Duration(minutes: 25),
-        shortBreakDuration: const Duration(minutes: 5),
-        blockedApps: [
-          const FocusPresetBlockedApp(appName: 'Steam', exePath: r'C:\Steam\steam.exe'),
-        ],
+        FocusPreset(
+          name: 'Crash Recovery',
+          focusDuration: const Duration(minutes: 25),
+          shortBreakDuration: const Duration(minutes: 5),
+          longBreakDuration: const Duration(minutes: 15),
+          blockedApps: [
+            const FocusPresetBlockedApp(appName: 'Steam', exePath: r'C:\Steam\steam.exe'),
+          ],
+        ),
       );
 
       // Simulate active session in SQLite before restart
@@ -642,12 +671,15 @@ void main() {
 
     test('12. Crash / Restart Recovery: Restoring paused session leaves focus enforcement inactive', () async {
       final preset = await focusService.createPreset(
-        name: 'Paused Recovery',
-        focusDuration: const Duration(minutes: 25),
-        shortBreakDuration: const Duration(minutes: 5),
-        blockedApps: [
-          const FocusPresetBlockedApp(appName: 'Steam'),
-        ],
+        FocusPreset(
+          name: 'Paused Recovery',
+          focusDuration: const Duration(minutes: 25),
+          shortBreakDuration: const Duration(minutes: 5),
+          longBreakDuration: const Duration(minutes: 15),
+          blockedApps: [
+            const FocusPresetBlockedApp(appName: 'Steam'),
+          ],
+        ),
       );
 
       final active = ActiveFocusState(
