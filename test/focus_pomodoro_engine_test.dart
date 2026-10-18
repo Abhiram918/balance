@@ -1,10 +1,12 @@
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:balance/core/models/app_limit.dart';
 import 'package:balance/core/models/focus_preset.dart';
 import 'package:balance/core/models/focus_session.dart';
 import 'package:balance/core/services/focus_notification_service.dart';
 import 'package:balance/core/services/focus_service.dart';
 import 'package:balance/core/services/settings_service.dart';
+import 'package:balance/core/services/usage_calculator.dart';
 import 'package:balance/core/services/usage_repository.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -606,6 +608,310 @@ void main() {
       // notifyCount did not increase because global notifications is false
       expect(notifService.notifyCount, equals(1));
 
+      service.dispose();
+    });
+
+    test('Duplicating a preset with blocked applications assigns fresh, distinct database IDs to both the preset and all of its blocked apps', () async {
+      final service = FocusService(repository: repository, clock: clock);
+      await service.init();
+
+      final original = await service.createPreset(
+        FocusPreset(
+          name: 'Gaming Block',
+          focusDuration: const Duration(minutes: 50),
+          shortBreakDuration: const Duration(minutes: 10),
+          longBreakDuration: const Duration(minutes: 30),
+          blockedApps: const [
+            FocusPresetBlockedApp(appName: 'Steam', exePath: r'C:\steam.exe'),
+            FocusPresetBlockedApp(appName: 'Discord', exePath: r'C:\discord.exe'),
+            FocusPresetBlockedApp(appName: 'Spotify', exePath: r'C:\spotify.exe'),
+          ],
+        ),
+      );
+
+      expect(original.id, isNotNull);
+      expect(original.blockedApps.length, equals(3));
+      final originalAppIds = original.blockedApps.map((a) => a.id).toSet();
+      expect(originalAppIds.length, equals(3));
+      expect(originalAppIds, isNot(contains(null)));
+
+      // Duplicate
+      final copy = await service.duplicatePreset(original);
+      expect(copy.id, isNotNull);
+      expect(copy.id, isNot(equals(original.id)));
+      expect(copy.name, equals('Gaming Block (Copy)'));
+      expect(copy.blockedApps.length, equals(3));
+
+      // Verify every blocked app received a fresh ID and links to the new preset
+      final copyAppIds = copy.blockedApps.map((a) => a.id).toSet();
+      expect(copyAppIds.length, equals(3));
+      expect(copyAppIds, isNot(contains(null)));
+      expect(copyAppIds.intersection(originalAppIds), isEmpty);
+
+      for (final app in copy.blockedApps) {
+        expect(app.presetId, equals(copy.id));
+      }
+
+      // Verify original preset and apps remain unchanged in database
+      final verifiedOriginal = await repository.getFocusPresetById(original.id!);
+      expect(verifiedOriginal, isNotNull);
+      expect(verifiedOriginal!.blockedApps.length, equals(3));
+      for (final app in verifiedOriginal.blockedApps) {
+        expect(app.presetId, equals(original.id));
+      }
+
+      service.dispose();
+    });
+
+    test('Complete 4-cycle Pomodoro round with manual transitions advances and resets correctly', () async {
+      final service = FocusService(
+        repository: repository,
+        notificationService: notificationService,
+        clock: clock,
+      );
+      await service.init();
+
+      final fourCyclePreset = await service.createPreset(
+        FocusPreset(
+          name: 'Classic 4-Cycle',
+          focusDuration: const Duration(minutes: 25),
+          shortBreakDuration: const Duration(minutes: 5),
+          longBreakDuration: const Duration(minutes: 15),
+          cyclesBeforeLongBreak: 4,
+          autoStartBreaks: false,
+          autoStartFocus: false,
+        ),
+      );
+      await service.selectPreset(fourCyclePreset);
+
+      // --- Cycle 1 ---
+      expect(service.currentCycle, equals(1));
+      await service.start();
+      simulatedTime = simulatedTime.add(const Duration(minutes: 25, seconds: 1));
+      service.tick();
+      await service.pendingDbOp;
+      expect(service.status, equals(FocusStatus.completed));
+      expect(service.remainingDuration, equals(Duration.zero));
+      expect(service.isLongBreak, isFalse);
+
+      await service.startNextPhase(); // Start Short Break 1
+      expect(service.sessionType, equals(FocusSessionType.breakSession));
+      expect(service.targetDuration, equals(const Duration(minutes: 5)));
+      simulatedTime = simulatedTime.add(const Duration(minutes: 5, seconds: 1));
+      service.tick();
+      await service.pendingDbOp;
+      expect(service.status, equals(FocusStatus.completed));
+
+      // --- Cycle 2 ---
+      await service.startNextPhase(); // Start Focus 2
+      expect(service.currentCycle, equals(2));
+      expect(service.sessionType, equals(FocusSessionType.focus));
+      simulatedTime = simulatedTime.add(const Duration(minutes: 25, seconds: 1));
+      service.tick();
+      await service.pendingDbOp;
+      expect(service.status, equals(FocusStatus.completed));
+      expect(service.isLongBreak, isFalse);
+
+      await service.startNextPhase(); // Start Short Break 2
+      expect(service.sessionType, equals(FocusSessionType.breakSession));
+      simulatedTime = simulatedTime.add(const Duration(minutes: 5, seconds: 1));
+      service.tick();
+      await service.pendingDbOp;
+
+      // --- Cycle 3 ---
+      await service.startNextPhase(); // Start Focus 3
+      expect(service.currentCycle, equals(3));
+      simulatedTime = simulatedTime.add(const Duration(minutes: 25, seconds: 1));
+      service.tick();
+      await service.pendingDbOp;
+      expect(service.isLongBreak, isFalse);
+
+      await service.startNextPhase(); // Start Short Break 3
+      simulatedTime = simulatedTime.add(const Duration(minutes: 5, seconds: 1));
+      service.tick();
+      await service.pendingDbOp;
+
+      // --- Cycle 4 ---
+      await service.startNextPhase(); // Start Focus 4 (Target cycle!)
+      expect(service.currentCycle, equals(4));
+      simulatedTime = simulatedTime.add(const Duration(minutes: 25, seconds: 1));
+      service.tick();
+      await service.pendingDbOp;
+
+      // Reached 4 cycles -> Long break is primed!
+      expect(service.status, equals(FocusStatus.completed));
+      expect(service.currentCycle, equals(4));
+      expect(service.isLongBreak, isTrue);
+
+      await service.startNextPhase(); // Start Long Break
+      expect(service.sessionType, equals(FocusSessionType.breakSession));
+      expect(service.targetDuration, equals(const Duration(minutes: 15)));
+      expect(service.isLongBreak, isTrue);
+
+      simulatedTime = simulatedTime.add(const Duration(minutes: 15, seconds: 1));
+      service.tick();
+      await service.pendingDbOp;
+
+      // Long break finished -> Cycle resets to 1, ready for new round
+      expect(service.status, equals(FocusStatus.completed));
+      expect(service.currentCycle, equals(1));
+      expect(service.isLongBreak, isFalse);
+
+      service.dispose();
+    });
+
+    test('restartCurrentPhase and resetCycle maintain consistent cycle numbers and state', () async {
+      final service = FocusService(repository: repository, clock: clock);
+      await service.init();
+
+      final preset = await service.createPreset(
+        FocusPreset(
+          name: 'Cycle Control',
+          focusDuration: const Duration(minutes: 20),
+          shortBreakDuration: const Duration(minutes: 5),
+          longBreakDuration: const Duration(minutes: 15),
+          cyclesBeforeLongBreak: 4,
+          autoStartBreaks: true,
+        ),
+      );
+      await service.selectPreset(preset);
+
+      // Advance to cycle 2 focus
+      await service.start();
+      simulatedTime = simulatedTime.add(const Duration(minutes: 20, seconds: 1));
+      service.tick();
+      await service.pendingDbOp; // Auto-started short break on cycle 1
+
+      simulatedTime = simulatedTime.add(const Duration(minutes: 5, seconds: 1));
+      service.tick();
+      await service.pendingDbOp; // Cycle 2 ready
+
+      await service.start();
+      expect(service.currentCycle, equals(2));
+
+      // Advance 10 minutes into cycle 2 focus
+      simulatedTime = simulatedTime.add(const Duration(minutes: 10));
+
+      // Restart current phase
+      await service.restartCurrentPhase();
+      expect(service.currentCycle, equals(2));
+      expect(service.status, equals(FocusStatus.running));
+      expect(service.remainingDuration, equals(const Duration(minutes: 20)));
+      expect(service.sessionType, equals(FocusSessionType.focus));
+
+      // Reset cycle back to 1
+      await service.resetCycle();
+      expect(service.currentCycle, equals(1));
+      expect(service.status, equals(FocusStatus.idle));
+      expect(service.sessionType, equals(FocusSessionType.focus));
+      expect(service.targetDuration, equals(const Duration(minutes: 20)));
+      expect(service.remainingDuration, equals(const Duration(minutes: 20)));
+
+      service.dispose();
+    });
+
+    test('Break time is never counted as focus time in daily analytics', () async {
+      final service = FocusService(repository: repository, clock: clock);
+      await service.init();
+
+      // Run 25-minute focus session
+      await service.start();
+      simulatedTime = simulatedTime.add(const Duration(minutes: 25, seconds: 1));
+      service.tick();
+      await service.pendingDbOp;
+
+      // Run 15-minute break session
+      await service.setSessionType(FocusSessionType.breakSession);
+      service.setTargetDuration(const Duration(minutes: 15));
+      await service.start();
+      simulatedTime = simulatedTime.add(const Duration(minutes: 15, seconds: 1));
+      service.tick();
+      await service.pendingDbOp;
+
+      final history = await repository.getRecentFocusSessions();
+      expect(history.length, equals(2));
+
+      final today = DateTime(2026, 10, 18);
+      final metrics = UsageCalculator.calculateFocusMetrics(
+        date: today,
+        focusSessions: history,
+      );
+
+      // Focus time strictly counts the 25 min focus, NOT the 15 min break
+      expect(metrics.focusTime, equals(const Duration(minutes: 25)));
+      expect(metrics.breaksTaken, equals(1));
+      expect(metrics.breakDuration, equals(const Duration(minutes: 15)));
+
+      service.dispose();
+    });
+
+    test('App restart during short break, long break, and paused break restores exact phase and state', () async {
+      // 1. Restart during running short break
+      final service1 = FocusService(repository: repository, clock: clock);
+      await service1.init();
+      await service1.setSessionType(FocusSessionType.breakSession);
+      service1.setTargetDuration(const Duration(minutes: 5));
+      await service1.start();
+
+      simulatedTime = simulatedTime.add(const Duration(minutes: 2));
+      await service1.syncActiveState();
+      await service1.pendingDbOp;
+      service1.dispose();
+
+      final service2 = FocusService(repository: repository, clock: clock);
+      await service2.init();
+      expect(service2.status, equals(FocusStatus.running));
+      expect(service2.sessionType, equals(FocusSessionType.breakSession));
+      expect(service2.isLongBreak, isFalse);
+      expect(service2.remainingDuration, equals(const Duration(minutes: 3)));
+      service2.dispose();
+
+      // 2. Restart during paused break
+      final service3 = FocusService(repository: repository, clock: clock);
+      await service3.init();
+      await service3.pause();
+      await service3.pendingDbOp;
+      service3.dispose();
+
+      final service4 = FocusService(repository: repository, clock: clock);
+      await service4.init();
+      expect(service4.status, equals(FocusStatus.paused));
+      expect(service4.sessionType, equals(FocusSessionType.breakSession));
+      expect(service4.remainingDuration, equals(const Duration(minutes: 3)));
+      service4.dispose();
+    });
+
+    test('Daily app limits and tracking operations remain completely functional with Focus Mode active', () async {
+      // Insert app limit
+      final limit = AppLimit(
+        appName: 'Steam',
+        exePath: r'C:\steam.exe',
+        limitDuration: const Duration(hours: 1),
+        warningThresholdPercentage: 80,
+        isEnabled: true,
+        isEnforced: true,
+        createdAt: simulatedTime,
+        updatedAt: simulatedTime,
+      );
+
+      final insertedLimit = await repository.insertLimit(limit);
+      expect(insertedLimit.id, isNotNull);
+
+      final allLimits = await repository.getAllLimits();
+      expect(allLimits.length, equals(1));
+      expect(allLimits.first.appName, equals('Steam'));
+      expect(allLimits.first.isEnforced, isTrue);
+
+      // Start Focus Mode and verify limits are still intact
+      final service = FocusService(repository: repository, clock: clock);
+      await service.init();
+      await service.start();
+
+      final limitsWhileFocusRunning = await repository.getAllLimits();
+      expect(limitsWhileFocusRunning.length, equals(1));
+      expect(limitsWhileFocusRunning.first.appName, equals('Steam'));
+
+      await service.stop();
       service.dispose();
     });
   });
