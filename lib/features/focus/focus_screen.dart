@@ -12,9 +12,12 @@ import '../../core/widgets/page_header.dart';
 import 'widgets/focus_preset_selector.dart';
 
 class FocusScreen extends StatelessWidget {
-  const FocusScreen({super.key});
+  final WindowsAppDiscoveryService? discoveryService;
+
+  const FocusScreen({super.key, this.discoveryService});
 
   WindowsAppDiscoveryService _getDiscoveryService(BuildContext context, FocusService focusService) {
+    if (discoveryService != null) return discoveryService!;
     try {
       final limitsService = context.getInheritedWidgetOfExactType<LimitsProvider>()?.notifier;
       if (limitsService?.discoveryService != null) {

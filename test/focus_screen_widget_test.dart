@@ -18,16 +18,111 @@ import 'package:balance/features/focus/widgets/focus_preset_dialog.dart';
 import 'package:balance/features/focus/widgets/focus_preset_selector.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-void main() {
-  setUpAll(() {
-    sqfliteFfiInit();
-    databaseFactory = databaseFactoryFfi;
-  });
+class FakeUsageRepository extends UsageRepository {
+  ActiveFocusState? _active;
+  final List<FocusSessionRecord> _sessions = [];
+  final List<FocusPreset> _presets = [];
+  final Map<String, String> _settings = {};
+  int _presetIdCounter = 100;
 
+  FakeUsageRepository() : super(dbName: inMemoryDatabasePath);
+
+  @override
+  Future<ActiveFocusState?> getActiveFocusState() async => _active;
+
+  @override
+  Future<void> saveActiveFocusState(ActiveFocusState state) async {
+    _active = state;
+  }
+
+  @override
+  Future<void> clearActiveFocusState() async {
+    _active = null;
+  }
+
+  @override
+  Future<List<FocusPreset>> getAllFocusPresets() async {
+    return List.unmodifiable(_presets);
+  }
+
+  @override
+  Future<FocusPreset> insertFocusPreset(FocusPreset preset) async {
+    final newId = preset.id ?? _presetIdCounter++;
+    final newPreset = preset.copyWith(id: newId);
+    _presets.add(newPreset);
+    return newPreset;
+  }
+
+  @override
+  Future<void> updateFocusPreset(FocusPreset preset) async {
+    final index = _presets.indexWhere((p) => p.id == preset.id);
+    if (index != -1) {
+      _presets[index] = preset;
+    }
+  }
+
+  @override
+  Future<void> deleteFocusPreset(int id) async {
+    _presets.removeWhere((p) => p.id == id);
+  }
+
+  @override
+  Future<FocusSessionRecord> insertFocusSession(FocusSessionRecord session) async {
+    final record = FocusSessionRecord(
+      id: _sessions.length + 1,
+      type: session.type,
+      plannedDuration: session.plannedDuration,
+      actualDuration: session.actualDuration,
+      startTime: session.startTime,
+      endTime: session.endTime,
+      completedNaturally: session.completedNaturally,
+      presetName: session.presetName,
+      cycleIndex: session.cycleIndex,
+      interruptionReason: session.interruptionReason,
+    );
+    _sessions.insert(0, record);
+    return record;
+  }
+
+  @override
+  Future<List<FocusSessionRecord>> getRecentFocusSessions({int limit = 10}) async {
+    return List.unmodifiable(_sessions.take(limit));
+  }
+
+  @override
+  Future<List<FocusSessionRecord>> getFocusSessionsForRange(DateTime start, DateTime end) async {
+    return List.unmodifiable(_sessions);
+  }
+
+  @override
+  Future<List<FocusSessionRecord>> getFocusSessionsForDay(DateTime date) async {
+    return List.unmodifiable(_sessions);
+  }
+
+  @override
+  Future<List<AppSession>> getSessionsForDay(DateTime date) async => [];
+
+  @override
+  Future<List<AppSession>> getSessionsForRange(DateTime start, DateTime end) async => [];
+
+  @override
+  Future<String?> getSetting(String key) async => _settings[key];
+
+  @override
+  Future<void> setSetting(String key, String value) async {
+    _settings[key] = value;
+  }
+
+  @override
+  Future<List<AppLimit>> getAllLimits() async => [];
+
+  @override
+  Future<void> close() async {}
+}
+
+void main() {
   group('FocusScreen Phase 4 Widget Tests', () {
-    late Directory tempDir;
-    late String dbPath;
-    late UsageRepository repository;
+    late FakeUsageRepository repository;
     late SettingsService settingsService;
     late WindowsUsageTracker tracker;
     late FocusService focusService;
@@ -37,10 +132,8 @@ void main() {
     DateTime clock() => simulatedTime;
 
     setUp(() async {
-      tempDir = await Directory.systemTemp.createTemp('focus_widget_test_');
-      dbPath = '${tempDir.path}${Platform.pathSeparator}test_focus.db';
-      repository = UsageRepository(dbName: dbPath);
       simulatedTime = DateTime(2026, 10, 18, 10, 0, 0);
+      repository = FakeUsageRepository();
 
       settingsService = SettingsService(repository: repository);
       await settingsService.init();
@@ -70,9 +163,6 @@ void main() {
       await focusService.pendingDbOp;
       focusService.dispose();
       await repository.close();
-      try {
-        await tempDir.delete(recursive: true);
-      } catch (_) {}
     });
 
     final testTheme = ThemeData.dark().copyWith(
@@ -88,7 +178,7 @@ void main() {
             focusService: focusService,
             child: MaterialApp(
               theme: testTheme,
-              home: const FocusScreen(),
+              home: FocusScreen(discoveryService: discoveryService),
             ),
           ),
         ),
@@ -141,41 +231,29 @@ void main() {
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
-      print('DEBUG: STEP A - pumping harness');
       await tester.pumpWidget(buildTestHarness());
-      print('DEBUG: STEP B - pumpAndSettle');
       await tester.pumpAndSettle();
 
-      print('DEBUG: STEP C - tapping Start Focus');
       // Start Standard Pomodoro (25 min)
       await tester.tap(find.text('Start Focus'));
-      print('DEBUG: STEP D - pump 100ms');
       await tester.pump(const Duration(milliseconds: 100));
 
-      print('DEBUG: STEP E - verifying running');
       expect(focusService.isRunning, isTrue);
       expect(focusService.targetDuration, equals(const Duration(minutes: 25)));
 
-      print('DEBUG: STEP F - tapping Deep Work');
       // Attempt to tap "Deep Work" while running
       await tester.tap(find.text('Deep Work'));
-      print('DEBUG: STEP G - pump 300ms');
       await tester.pump(const Duration(milliseconds: 300));
 
-      print('DEBUG: STEP H - expectations');
       // Running session must still have 25m target duration and Standard Pomodoro settings
       expect(focusService.isRunning, isTrue);
       expect(focusService.targetDuration, equals(const Duration(minutes: 25)));
       expect(find.text('Cannot switch preset during an active session.'), findsOneWidget);
 
-      print('DEBUG: STEP I - stopping focusService');
       // Stop session cleanly before test ends
       await focusService.stop();
-      print('DEBUG: STEP J - awaiting pendingDbOp');
       await focusService.pendingDbOp;
-      print('DEBUG: STEP K - pumpAndSettle');
       await tester.pumpAndSettle();
-      print('DEBUG: STEP L - done');
     });
 
     testWidgets('3. Creating a custom preset with validation and saving it persists to list', (tester) async {
