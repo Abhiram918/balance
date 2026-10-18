@@ -1,9 +1,10 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:balance/app/app.dart';
 import 'package:balance/app/theme/app_colors.dart';
+import 'package:balance/core/models/app_limit.dart';
+import 'package:balance/core/models/app_session.dart';
 import 'package:balance/core/models/discovered_app.dart';
 import 'package:balance/core/models/focus_preset.dart';
 import 'package:balance/core/models/focus_session.dart';
@@ -16,7 +17,6 @@ import 'package:balance/features/focus/focus_screen.dart';
 import 'package:balance/features/focus/widgets/focus_app_picker_dialog.dart';
 import 'package:balance/features/focus/widgets/focus_preset_dialog.dart';
 import 'package:balance/features/focus/widgets/focus_preset_selector.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 class FakeUsageRepository extends UsageRepository {
   ActiveFocusState? _active;
@@ -25,7 +25,7 @@ class FakeUsageRepository extends UsageRepository {
   final Map<String, String> _settings = {};
   int _presetIdCounter = 100;
 
-  FakeUsageRepository() : super(dbName: inMemoryDatabasePath);
+  FakeUsageRepository() : super(dbName: 'fake_focus_test.db');
 
   @override
   Future<ActiveFocusState?> getActiveFocusState() async => _active;
@@ -250,10 +250,12 @@ void main() {
       expect(focusService.targetDuration, equals(const Duration(minutes: 25)));
       expect(find.text('Cannot switch preset during an active session.'), findsOneWidget);
 
-      // Stop session cleanly before test ends
+      // Stop session cleanly before test ends to cancel ticker
       await focusService.stop();
       await focusService.pendingDbOp;
-      await tester.pumpAndSettle();
+
+      // Settle any remaining snackbar timers
+      await tester.pump(const Duration(seconds: 4));
     });
 
     testWidgets('3. Creating a custom preset with validation and saving it persists to list', (tester) async {
