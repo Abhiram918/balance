@@ -182,7 +182,7 @@ class FocusPresetSelector extends StatelessWidget {
 
         // Horizontal scrollable preset cards row
         SizedBox(
-          height: 88,
+          height: 102,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: presets.length,
@@ -194,7 +194,7 @@ class FocusPresetSelector extends StatelessWidget {
                   : selected?.name.toLowerCase() == preset.name.toLowerCase();
 
               return SizedBox(
-                width: 250,
+                width: 270,
                 child: _buildPresetCard(context, preset, isSelected, colors, theme),
               );
             },
@@ -230,7 +230,7 @@ class FocusPresetSelector extends StatelessWidget {
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
           color: isSelected
               ? colors.surface
@@ -260,7 +260,7 @@ class FocusPresetSelector extends StatelessWidget {
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             // Top Row: Name, Badge, Menu
             Row(
@@ -272,7 +272,6 @@ class FocusPresetSelector extends StatelessWidget {
                   ),
                 Expanded(
                   child: Row(
-                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Flexible(
                         child: Text(
@@ -295,7 +294,7 @@ class FocusPresetSelector extends StatelessWidget {
                           child: Text(
                             'DEFAULT',
                             style: TextStyle(
-                              fontSize: 7.5,
+                              fontSize: 8,
                               fontWeight: FontWeight.w700,
                               color: accentColor,
                             ),
@@ -373,7 +372,7 @@ class FocusPresetSelector extends StatelessWidget {
                 const SizedBox(width: 3),
                 Expanded(
                   child: Text(
-                    '${preset.shortBreakDuration.inMinutes}m/${preset.longBreakDuration.inMinutes}m Break',
+                    '${preset.shortBreakDuration.inMinutes}m/${preset.longBreakDuration.inMinutes}m',
                     style: TextStyle(
                       fontSize: 10.5,
                       fontWeight: FontWeight.w600,
@@ -400,34 +399,40 @@ class FocusPresetSelector extends StatelessWidget {
                     ),
                   ],
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                  decoration: BoxDecoration(
-                    color: preset.blockedApps.isNotEmpty
-                        ? Colors.deepPurpleAccent.withValues(alpha: 0.12)
-                        : colors.surfaceSecondary,
-                    borderRadius: BorderRadius.circular(5),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        preset.blockedApps.isNotEmpty ? LucideIcons.shieldAlert : LucideIcons.shieldCheck,
-                        size: 10,
-                        color: preset.blockedApps.isNotEmpty ? Colors.deepPurpleAccent : colors.textSecondary,
-                      ),
-                      const SizedBox(width: 3),
-                      Text(
-                        preset.blockedApps.isNotEmpty
-                            ? '${preset.blockedApps.length} blocked'
-                            : 'No apps blocked',
-                        style: TextStyle(
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w600,
+                const SizedBox(width: 4),
+                Flexible(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: preset.blockedApps.isNotEmpty
+                          ? Colors.deepPurpleAccent.withValues(alpha: 0.12)
+                          : colors.surfaceSecondary,
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          preset.blockedApps.isNotEmpty ? LucideIcons.shieldAlert : LucideIcons.shieldCheck,
+                          size: 10,
                           color: preset.blockedApps.isNotEmpty ? Colors.deepPurpleAccent : colors.textSecondary,
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 3),
+                        Flexible(
+                          child: Text(
+                            preset.blockedApps.isNotEmpty
+                                ? '${preset.blockedApps.length} blocked'
+                                : '0 blocked',
+                            style: TextStyle(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w600,
+                              color: preset.blockedApps.isNotEmpty ? Colors.deepPurpleAccent : colors.textSecondary,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
