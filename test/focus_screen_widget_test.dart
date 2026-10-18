@@ -319,6 +319,8 @@ void main() {
       await tester.pumpAndSettle();
 
       // Tap "Add Apps" button
+      await tester.ensureVisible(find.text('Add Apps'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Add Apps'));
       await tester.pumpAndSettle();
 

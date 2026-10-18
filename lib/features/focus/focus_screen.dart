@@ -534,8 +534,10 @@ class FocusScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: AppSpacing.md),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: AppSpacing.md,
+              runSpacing: AppSpacing.sm,
               children: [
                 OutlinedButton.icon(
                   onPressed: () => focusService.reset(),
@@ -545,7 +547,6 @@ class FocusScreen extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   ),
                 ),
-                const SizedBox(width: AppSpacing.md),
                 ElevatedButton.icon(
                   onPressed: () => focusService.startNextPhase(),
                   icon: Icon(isFocus ? LucideIcons.coffee : LucideIcons.flame, size: 15),
