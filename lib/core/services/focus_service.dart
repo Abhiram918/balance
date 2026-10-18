@@ -493,6 +493,17 @@ class FocusService extends ChangeNotifier {
   Future<void> start() async {
     if (isRunning) return;
 
+    if (_status == FocusStatus.completed) {
+      if (_sessionType == FocusSessionType.focus) {
+        _sessionType = FocusSessionType.breakSession;
+        _targetDuration = _isLongBreak ? _activeLongBreakDuration : _activeShortBreakDuration;
+      } else {
+        _sessionType = FocusSessionType.focus;
+        _targetDuration = _activeFocusDuration;
+      }
+      _remainingDuration = _targetDuration;
+    }
+
     final now = _clock();
     _startTime = now;
     _expectedEndTime = now.add(_targetDuration);
@@ -869,7 +880,7 @@ class FocusService extends ChangeNotifier {
     // Advance Pomodoro phases
     bool shouldAutoStartNext = false;
     if (currentType == FocusSessionType.focus) {
-      // Focus completed -> Transition to break
+      // Focus completed -> Prepare break
       if (_currentCycle >= _activeCyclesBeforeLongBreak) {
         _isLongBreak = true;
         _targetDuration = _activeLongBreakDuration;
@@ -877,21 +888,25 @@ class FocusService extends ChangeNotifier {
         _isLongBreak = false;
         _targetDuration = _activeShortBreakDuration;
       }
-      _sessionType = FocusSessionType.breakSession;
-      _remainingDuration = _targetDuration;
       shouldAutoStartNext = _activeAutoStartBreaks;
+      if (shouldAutoStartNext) {
+        _sessionType = FocusSessionType.breakSession;
+        _remainingDuration = _targetDuration;
+      }
     } else {
-      // Break completed -> Transition to next focus cycle
+      // Break completed -> Prepare next focus cycle
       if (_isLongBreak) {
         _currentCycle = 1;
         _isLongBreak = false;
       } else {
         _currentCycle += 1;
       }
-      _sessionType = FocusSessionType.focus;
       _targetDuration = _activeFocusDuration;
-      _remainingDuration = _targetDuration;
       shouldAutoStartNext = _activeAutoStartFocus;
+      if (shouldAutoStartNext) {
+        _sessionType = FocusSessionType.focus;
+        _remainingDuration = _targetDuration;
+      }
     }
 
     notifyListeners();
