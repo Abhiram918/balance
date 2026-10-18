@@ -79,19 +79,21 @@ class AppBlockDialog extends StatelessWidget {
                     width: 44,
                     height: 44,
                     decoration: BoxDecoration(
-                      color: colors.cardPeach,
+                      color: event.isFocusBlock
+                          ? colors.primaryAccent.withValues(alpha: 0.15)
+                          : colors.cardPeach,
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(
-                      LucideIcons.shieldAlert,
-                      color: Color(0xFFE05638),
+                    child: Icon(
+                      event.isFocusBlock ? LucideIcons.target : LucideIcons.shieldAlert,
+                      color: event.isFocusBlock ? colors.primaryAccent : const Color(0xFFE05638),
                       size: 24,
                     ),
                   ),
                   const SizedBox(width: AppSpacing.md),
                   Expanded(
                     child: Text(
-                      'Daily limit reached',
+                      event.isFocusBlock ? 'Focus mode restriction' : 'Daily limit reached',
                       key: const Key('block_dialog_title'),
                       style: TextStyle(
                         fontSize: 18,
@@ -106,7 +108,9 @@ class AppBlockDialog extends StatelessWidget {
 
               // Message explaining the block
               Text(
-                "You've reached your daily limit for ${event.appName}. You can't access this app again until your daily limit resets.",
+                event.isFocusBlock
+                    ? "${event.appName} is blocked during your active focus session${event.focusPresetName != null && event.focusPresetName!.trim().isNotEmpty ? ' (${event.focusPresetName})' : ''}. Stay in the zone!"
+                    : "You've reached your daily limit for ${event.appName}. You can't access this app again until your daily limit resets.",
                 key: const Key('block_dialog_message'),
                 style: TextStyle(
                   fontSize: 14,
@@ -116,94 +120,176 @@ class AppBlockDialog extends StatelessWidget {
               ),
               const SizedBox(height: AppSpacing.lg),
 
-              // Usage and limit summary container
+              // Summary container
               Container(
                 decoration: BoxDecoration(
                   color: colors.surfaceSecondary,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 padding: const EdgeInsets.all(AppSpacing.md),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          LucideIcons.clock,
-                          size: 16,
-                          color: colors.textSecondary,
-                        ),
-                        const SizedBox(width: AppSpacing.sm),
-                        Text(
-                          'Daily limit:',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: colors.textSecondary,
+                child: event.isFocusBlock
+                    ? Column(
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                LucideIcons.target,
+                                size: 16,
+                                color: colors.textSecondary,
+                              ),
+                              const SizedBox(width: AppSpacing.sm),
+                              Text(
+                                'Focus preset:',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: colors.textSecondary,
+                                ),
+                              ),
+                              const Spacer(),
+                              Text(
+                                event.focusPresetName ?? 'Focus Mode',
+                                key: const Key('block_dialog_preset_name'),
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: colors.textPrimary,
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
-                        const Spacer(),
-                        Text(
-                          _formatDuration(event.limitDuration),
-                          key: const Key('block_dialog_limit_duration'),
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: colors.textPrimary,
+                          const SizedBox(height: AppSpacing.sm),
+                          Row(
+                            children: [
+                              Icon(
+                                LucideIcons.clock,
+                                size: 16,
+                                color: colors.textSecondary,
+                              ),
+                              const SizedBox(width: AppSpacing.sm),
+                              Text(
+                                'Remaining focus:',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: colors.textSecondary,
+                                ),
+                              ),
+                              const Spacer(),
+                              Text(
+                                _formatDuration(event.remainingFocusDuration ?? Duration.zero),
+                                key: const Key('block_dialog_remaining_duration'),
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: colors.textPrimary,
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: AppSpacing.sm),
-                    Row(
-                      children: [
-                        Icon(
-                          LucideIcons.barChart2,
-                          size: 16,
-                          color: colors.textSecondary,
-                        ),
-                        const SizedBox(width: AppSpacing.sm),
-                        Text(
-                          'Used today:',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: colors.textSecondary,
+                          const Divider(height: 16, thickness: 0.5),
+                          Row(
+                            children: [
+                              Icon(
+                                LucideIcons.shieldCheck,
+                                size: 16,
+                                color: colors.primaryAccent,
+                              ),
+                              const SizedBox(width: AppSpacing.sm),
+                              Expanded(
+                                child: Text(
+                                  'Unblocks when focus session ends',
+                                  key: const Key('block_dialog_reset_time'),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                    color: colors.primaryAccent,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
-                        const Spacer(),
-                        Text(
-                          _formatDuration(event.usedDuration),
-                          key: const Key('block_dialog_used_duration'),
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: colors.textPrimary,
+                        ],
+                      )
+                    : Column(
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                LucideIcons.clock,
+                                size: 16,
+                                color: colors.textSecondary,
+                              ),
+                              const SizedBox(width: AppSpacing.sm),
+                              Text(
+                                'Daily limit:',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: colors.textSecondary,
+                                ),
+                              ),
+                              const Spacer(),
+                              Text(
+                                _formatDuration(event.limitDuration),
+                                key: const Key('block_dialog_limit_duration'),
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: colors.textPrimary,
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
-                      ],
-                    ),
-                    const Divider(height: 16, thickness: 0.5),
-                    Row(
-                      children: [
-                        Icon(
-                          LucideIcons.rotateCcw,
-                          size: 16,
-                          color: colors.primaryAccent,
-                        ),
-                        const SizedBox(width: AppSpacing.sm),
-                        Expanded(
-                          child: Text(
-                            _formatResetTime(event.resetTime),
-                            key: const Key('block_dialog_reset_time'),
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                              color: colors.primaryAccent,
-                            ),
+                          const SizedBox(height: AppSpacing.sm),
+                          Row(
+                            children: [
+                              Icon(
+                                LucideIcons.barChart2,
+                                size: 16,
+                                color: colors.textSecondary,
+                              ),
+                              const SizedBox(width: AppSpacing.sm),
+                              Text(
+                                'Used today:',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: colors.textSecondary,
+                                ),
+                              ),
+                              const Spacer(),
+                              Text(
+                                _formatDuration(event.usedDuration),
+                                key: const Key('block_dialog_used_duration'),
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: colors.textPrimary,
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+                          const Divider(height: 16, thickness: 0.5),
+                          Row(
+                            children: [
+                              Icon(
+                                LucideIcons.rotateCcw,
+                                size: 16,
+                                color: colors.primaryAccent,
+                              ),
+                              const SizedBox(width: AppSpacing.sm),
+                              Expanded(
+                                child: Text(
+                                  _formatResetTime(event.resetTime),
+                                  key: const Key('block_dialog_reset_time'),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                    color: colors.primaryAccent,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
               ),
               const SizedBox(height: AppSpacing.xl),
 

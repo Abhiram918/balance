@@ -117,6 +117,30 @@ class FocusNotificationService {
     return _showToast(title: title, body: body);
   }
 
+  /// Dispatches a notification when an application is blocked by an active Focus Mode session.
+  Future<bool> notifyFocusAppBlocked({
+    required String appName,
+    String? presetName,
+    bool soundEnabled = true,
+  }) async {
+    if (settingsService != null && !settingsService!.notifications) {
+      return false;
+    }
+
+    final title = '$appName Blocked by Focus Session 🎯';
+    final body = presetName != null && presetName.trim().isNotEmpty
+        ? '$appName is blocked during your "$presetName" focus session.'
+        : '$appName is blocked during your active focus session.';
+
+    if (soundEnabled && Platform.isWindows) {
+      try {
+        MessageBeep(MB_ICONASTERISK);
+      } catch (_) {}
+    }
+
+    return _showToast(title: title, body: body);
+  }
+
   Future<bool> _showToast({required String title, required String body}) async {
     if (_initialized) {
       try {
