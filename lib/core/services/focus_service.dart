@@ -79,7 +79,8 @@ class FocusService extends ChangeNotifier {
     return (_remainingDuration.inSeconds / _targetDuration.inSeconds).clamp(0.0, 1.0);
   }
 
-  Future<void> _dbQueue = Future.value();
+  final List<({Future<void> Function() op, Completer<void> completer})> _dbOps = [];
+  bool _isProcessingDbQueue = false;
   Future<void>? _pendingDbOp;
 
   /// Exposes the pending database write queue for deterministic test synchronization.
@@ -87,17 +88,33 @@ class FocusService extends ChangeNotifier {
 
   /// Enqueues database operations sequentially to prevent write races.
   Future<void> _enqueueDbOp(Future<void> Function() op) {
-    final next = _dbQueue.then((_) async {
-      if (_isDisposed) return;
-      try {
-        await op();
-      } catch (e, stack) {
-        debugPrint('FocusService persistence error: $e\n$stack');
+    final completer = Completer<void>();
+    _dbOps.add((op: op, completer: completer));
+    _pendingDbOp = completer.future;
+    _processDbQueue();
+    return completer.future;
+  }
+
+  void _processDbQueue() async {
+    if (_isProcessingDbQueue) return;
+    _isProcessingDbQueue = true;
+    try {
+      while (_dbOps.isNotEmpty) {
+        final item = _dbOps.removeAt(0);
+        if (!_isDisposed) {
+          try {
+            await item.op();
+          } catch (e, stack) {
+            debugPrint('FocusService persistence error: $e\n$stack');
+          }
+        }
+        if (!item.completer.isCompleted) {
+          item.completer.complete();
+        }
       }
-    });
-    _dbQueue = next;
-    _pendingDbOp = next;
-    return next;
+    } finally {
+      _isProcessingDbQueue = false;
+    }
   }
 
   /// Initializes the service, restores active session state if valid,

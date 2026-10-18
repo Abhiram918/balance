@@ -86,7 +86,11 @@ void main() {
     late WindowsUsageTracker tracker;
     late FocusService focusService;
 
+    late DateTime simulatedTime;
+    DateTime clock() => simulatedTime;
+
     setUp(() async {
+      simulatedTime = DateTime(2026, 10, 11, 10, 0, 0);
       repository = FakeUsageRepository();
       settingsService = SettingsService(repository: repository);
       await settingsService.init();
@@ -94,7 +98,7 @@ void main() {
       tracker = WindowsUsageTracker(repository: repository);
       await tracker.init();
 
-      focusService = FocusService(repository: repository);
+      focusService = FocusService(repository: repository, clock: clock);
       await focusService.init();
     });
 
@@ -248,11 +252,15 @@ void main() {
       // Session remains running
       expect(focusService.isRunning, isTrue);
 
+      // Advance simulated time past 5-second minimum threshold
+      simulatedTime = simulatedTime.add(const Duration(seconds: 10));
+
       // Tap stop again, then confirm
       await tester.tap(stopButtonFinder);
       await tester.pump(const Duration(milliseconds: 300));
       await tester.tap(find.text('Stop Session'));
-      await tester.pump(const Duration(milliseconds: 300));
+      // Wait for dialog animation to finish and stop() to complete DB operations
+      await tester.pumpAndSettle();
 
       // Session stopped
       expect(focusService.status, equals(FocusStatus.idle));
