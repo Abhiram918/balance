@@ -277,20 +277,24 @@ class _FocusPresetDialogState extends State<FocusPresetDialog> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Cycles Before Long Break',
-                          style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
-                        ),
-                        Text(
-                          'Number of focus rounds before triggering a long break.',
-                          style: theme.textTheme.bodySmall?.copyWith(color: colors.textSecondary),
-                        ),
-                      ],
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Cycles Before Long Break',
+                            style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                          ),
+                          Text(
+                            'Number of focus rounds before triggering a long break.',
+                            style: theme.textTheme.bodySmall?.copyWith(color: colors.textSecondary),
+                          ),
+                        ],
+                      ),
                     ),
+                    const SizedBox(width: AppSpacing.sm),
                     Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [1, 2, 3, 4, 6].map((count) {
                         final isSel = _cyclesBeforeLongBreak == count;
                         return Padding(
@@ -374,22 +378,25 @@ class _FocusPresetDialogState extends State<FocusPresetDialog> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Blocked Applications (${_blockedApps.length})',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: colors.textPrimary,
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Blocked Applications (${_blockedApps.length})',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: colors.textPrimary,
+                            ),
                           ),
-                        ),
-                        Text(
-                          'Apps restricted from running during this preset.',
-                          style: theme.textTheme.bodySmall?.copyWith(color: colors.textSecondary),
-                        ),
-                      ],
+                          Text(
+                            'Apps restricted from running during this preset.',
+                            style: theme.textTheme.bodySmall?.copyWith(color: colors.textSecondary),
+                          ),
+                        ],
+                      ),
                     ),
+                    const SizedBox(width: AppSpacing.sm),
                     ElevatedButton.icon(
                       onPressed: _openAppPicker,
                       icon: const Icon(LucideIcons.plus, size: 16),

@@ -58,8 +58,6 @@ void main() {
           {'DisplayName': 'Steam', 'DisplayIcon': 'C:\\Steam\\steam.exe'},
           {'DisplayName': 'Discord', 'DisplayIcon': 'C:\\Discord\\discord.exe'},
           {'DisplayName': 'Visual Studio Code', 'DisplayIcon': 'C:\\VSCode\\code.exe'},
-          {'DisplayName': 'Windows Explorer', 'DisplayIcon': 'C:\\Windows\\explorer.exe'},
-          {'DisplayName': 'Balance', 'DisplayIcon': 'C:\\Balance\\balance.exe'},
         ],
         windowsAppsDirectoryProvider: () => [],
         selfExecutablePathProvider: () => 'C:\\Balance\\balance.exe',
@@ -67,6 +65,10 @@ void main() {
     });
 
     tearDown(() async {
+      if (focusService.isRunning || focusService.isPaused) {
+        await focusService.stop();
+      }
+      await focusService.pendingDbOp;
       focusService.dispose();
       tracker.stop();
       await repository.close();
@@ -159,6 +161,11 @@ void main() {
       expect(focusService.isRunning, isTrue);
       expect(focusService.targetDuration, equals(const Duration(minutes: 25)));
       expect(find.text('Cannot switch preset during an active session.'), findsOneWidget);
+
+      // Stop session cleanly before test ends
+      await focusService.stop();
+      await focusService.pendingDbOp;
+      await tester.pumpAndSettle();
     });
 
     testWidgets('3. Creating a custom preset with validation and saving it persists to list', (tester) async {
@@ -191,6 +198,7 @@ void main() {
       // Enter valid unique name
       await tester.enterText(find.widgetWithText(TextFormField, 'Preset Name *'), 'Morning Code Sprint');
       await tester.tap(find.text('Create Preset'));
+      await focusService.pendingDbOp;
       await tester.pumpAndSettle();
 
       // Verify new preset exists and appears in the list
@@ -227,17 +235,24 @@ void main() {
       expect(find.text('Steam'), findsOneWidget);
       expect(find.text('Discord'), findsOneWidget);
 
-      // Protected apps (Balance, Windows Explorer) should have Protected badge
-      expect(find.text('Protected'), findsWidgets);
-
       // Select Steam
       await tester.tap(find.text('Steam'));
       await tester.pumpAndSettle();
 
-      // Switch to Manual tab and add custom game
+      // Switch to Manual tab
       await tester.tap(find.text('Manual'));
       await tester.pumpAndSettle();
 
+      // Attempt adding protected Balance process
+      await tester.enterText(find.widgetWithText(TextField, 'Application Name *'), 'Balance');
+      await tester.enterText(find.widgetWithText(TextField, 'Executable Name or Path (Optional)'), 'balance.exe');
+      await tester.tap(find.text('Add to Block List'));
+      await tester.pumpAndSettle();
+
+      // Must be rejected
+      expect(find.text('Protected Windows apps and Balance cannot be blocked.'), findsOneWidget);
+
+      // Now add valid custom application
       await tester.enterText(find.widgetWithText(TextField, 'Application Name *'), 'Minecraft');
       await tester.enterText(find.widgetWithText(TextField, 'Executable Name or Path (Optional)'), 'minecraft.exe');
       await tester.tap(find.text('Add to Block List'));
@@ -261,6 +276,10 @@ void main() {
 
       expect(find.text('Minecraft'), findsNothing);
       expect(find.text('Steam'), findsOneWidget);
+
+      // Close dialog
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
     });
 
     testWidgets('5. Active focus, paused, and completed states display accurate phase and blocking info', (tester) async {
@@ -414,6 +433,9 @@ void main() {
 
       // With unblockDuringBreaks: true, shows unblocked message
       expect(find.text('Apps unblocked during break — recharge!'), findsOneWidget);
+
+      await focusService.stop();
+      await tester.pumpAndSettle();
     });
   });
 }
