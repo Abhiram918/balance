@@ -141,29 +141,41 @@ void main() {
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
+      print('DEBUG: STEP A - pumping harness');
       await tester.pumpWidget(buildTestHarness());
+      print('DEBUG: STEP B - pumpAndSettle');
       await tester.pumpAndSettle();
 
+      print('DEBUG: STEP C - tapping Start Focus');
       // Start Standard Pomodoro (25 min)
       await tester.tap(find.text('Start Focus'));
+      print('DEBUG: STEP D - pump 100ms');
       await tester.pump(const Duration(milliseconds: 100));
 
+      print('DEBUG: STEP E - verifying running');
       expect(focusService.isRunning, isTrue);
       expect(focusService.targetDuration, equals(const Duration(minutes: 25)));
 
+      print('DEBUG: STEP F - tapping Deep Work');
       // Attempt to tap "Deep Work" while running
       await tester.tap(find.text('Deep Work'));
+      print('DEBUG: STEP G - pump 300ms');
       await tester.pump(const Duration(milliseconds: 300));
 
+      print('DEBUG: STEP H - expectations');
       // Running session must still have 25m target duration and Standard Pomodoro settings
       expect(focusService.isRunning, isTrue);
       expect(focusService.targetDuration, equals(const Duration(minutes: 25)));
       expect(find.text('Cannot switch preset during an active session.'), findsOneWidget);
 
+      print('DEBUG: STEP I - stopping focusService');
       // Stop session cleanly before test ends
       await focusService.stop();
+      print('DEBUG: STEP J - awaiting pendingDbOp');
       await focusService.pendingDbOp;
+      print('DEBUG: STEP K - pumpAndSettle');
       await tester.pumpAndSettle();
+      print('DEBUG: STEP L - done');
     });
 
     testWidgets('3. Creating a custom preset with validation and saving it persists to list', (tester) async {
