@@ -7,21 +7,34 @@ import '../../app/theme/app_colors.dart';
 import '../../app/theme/app_spacing.dart';
 import '../../core/models/focus_session.dart';
 import '../../core/services/focus_service.dart';
+import '../../core/services/windows_app_discovery_service.dart';
 import '../../core/widgets/page_header.dart';
+import 'widgets/focus_preset_selector.dart';
 
 class FocusScreen extends StatelessWidget {
   const FocusScreen({super.key});
 
+  WindowsAppDiscoveryService _getDiscoveryService(BuildContext context, FocusService focusService) {
+    try {
+      final limitsService = context.getInheritedWidgetOfExactType<LimitsProvider>()?.notifier;
+      if (limitsService?.discoveryService != null) {
+        return limitsService!.discoveryService!;
+      }
+    } catch (_) {}
+    return WindowsAppDiscoveryService(repository: focusService.repository);
+  }
+
   @override
   Widget build(BuildContext context) {
     final focusService = FocusProvider.of(context);
+    final discoveryService = _getDiscoveryService(context, focusService);
 
     return Scaffold(
       body: ListenableBuilder(
         listenable: focusService,
         builder: (context, _) {
           return SingleChildScrollView(
-            padding: const EdgeInsets.all(AppSpacing.xxl),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl, vertical: AppSpacing.md),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -39,18 +52,34 @@ class FocusScreen extends StatelessWidget {
                       _buildDevNotificationAction(context, focusService),
                   ],
                 ),
-                const SizedBox(height: AppSpacing.xl),
-                _buildModeSelector(context, focusService),
-                const SizedBox(height: AppSpacing.lg),
-                _buildDurationPresets(context, focusService),
-                const SizedBox(height: AppSpacing.xxl),
+                const SizedBox(height: AppSpacing.sm),
+
+                // Presets Section
+                FocusPresetSelector(
+                  focusService: focusService,
+                  discoveryService: discoveryService,
+                ),
+                const SizedBox(height: AppSpacing.sm),
+
+                // Active Session Info Card (when running or paused)
+                if (focusService.isRunning || focusService.isPaused)
+                  _buildActiveSessionBanner(context, focusService),
+
+                // Mode Selector (only when idle)
+                if (focusService.isIdle) ...[
+                  _buildModeSelector(context, focusService),
+                  const SizedBox(height: AppSpacing.sm),
+                ],
+
+                // Timer or Completion Banner
                 if (focusService.isCompleted)
                   _buildCompletionBanner(context, focusService)
                 else
                   _buildTimerCircle(context, focusService),
-                const SizedBox(height: AppSpacing.xxl),
+
+                const SizedBox(height: AppSpacing.md),
                 _buildControls(context, focusService),
-                const SizedBox(height: AppSpacing.xxl * 1.5),
+                const SizedBox(height: AppSpacing.xl),
                 _buildSessionHistory(context, focusService),
               ],
             ),
@@ -60,7 +89,159 @@ class FocusScreen extends StatelessWidget {
     );
   }
 
-  /// Segmented switch for Focus vs Break modes.
+  /// Active session info banner showing preset name, phase, cycle indicator, and blocking status.
+  Widget _buildActiveSessionBanner(BuildContext context, FocusService focusService) {
+    final theme = Theme.of(context);
+    final colors = theme.extension<AppThemeColors>()!;
+    final isFocus = focusService.sessionType == FocusSessionType.focus;
+    final accentColor = isFocus ? colors.primaryAccent : colors.greenAccent;
+    final presetName = focusService.selectedPreset?.name ?? 'Focus Session';
+
+    final phaseLabel = isFocus
+        ? 'Focus Phase'
+        : (focusService.isLongBreak ? 'Long Break' : 'Short Break');
+
+    final blockedCount = focusService.activeBlockedApps.length;
+    final String blockingText;
+    final IconData blockingIcon;
+    final Color blockingColor;
+
+    if (isFocus) {
+      if (blockedCount > 0) {
+        blockingText = '$blockedCount distraction app(s) restricted';
+        blockingIcon = LucideIcons.shieldAlert;
+        blockingColor = Colors.deepPurpleAccent;
+      } else {
+        blockingText = 'No app restrictions';
+        blockingIcon = LucideIcons.shieldCheck;
+        blockingColor = colors.textSecondary;
+      }
+    } else {
+      // Break phase
+      if (focusService.unblockDuringBreaks) {
+        blockingText = 'Apps unblocked during break — recharge!';
+        blockingIcon = LucideIcons.coffee;
+        blockingColor = colors.greenAccent;
+      } else {
+        blockingText = 'Restrictions maintained ($blockedCount apps blocked)';
+        blockingIcon = LucideIcons.shieldAlert;
+        blockingColor = Colors.deepPurpleAccent;
+      }
+    }
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 6),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: accentColor.withValues(alpha: 0.3)),
+        boxShadow: [
+          BoxShadow(
+            color: accentColor.withValues(alpha: 0.08),
+            blurRadius: 6,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(5),
+                decoration: BoxDecoration(
+                  color: accentColor.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  isFocus ? LucideIcons.brain : LucideIcons.coffee,
+                  size: 14,
+                  color: accentColor,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        presetName,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: colors.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: accentColor.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          phaseLabel,
+                          style: TextStyle(
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w700,
+                            color: accentColor,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      Text(
+                        'Cycle ${focusService.currentCycle} of ${focusService.totalCycles}',
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w600,
+                          color: colors.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Icon(blockingIcon, size: 11, color: blockingColor),
+                      const SizedBox(width: 3),
+                      Text(
+                        blockingText,
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w500,
+                          color: blockingColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          ),
+          if (focusService.isPaused)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.amber.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                'PAUSED',
+                style: TextStyle(
+                  fontSize: 9.5,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.amber.shade800,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Segmented switch for Focus vs Break modes (available when idle).
   Widget _buildModeSelector(BuildContext context, FocusService focusService) {
     final theme = Theme.of(context);
     final colors = theme.extension<AppThemeColors>()!;
@@ -70,9 +251,9 @@ class FocusScreen extends StatelessWidget {
       child: Container(
         decoration: BoxDecoration(
           color: colors.surfaceSecondary,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(10),
         ),
-        padding: const EdgeInsets.all(4),
+        padding: const EdgeInsets.all(3),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -118,7 +299,7 @@ class FocusScreen extends StatelessWidget {
       borderRadius: BorderRadius.circular(8),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.sm),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 5),
         decoration: BoxDecoration(
           color: isSelected ? colors.surface : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
@@ -136,15 +317,16 @@ class FocusScreen extends StatelessWidget {
           children: [
             Icon(
               icon,
-              size: 18,
+              size: 15,
               color: isSelected
                   ? activeColor
                   : colors.textSecondary.withValues(alpha: disabled ? 0.4 : 1.0),
             ),
-            const SizedBox(width: AppSpacing.sm),
+            const SizedBox(width: 6),
             Text(
               label,
-              style: theme.textTheme.labelLarge?.copyWith(
+              style: theme.textTheme.labelMedium?.copyWith(
+                fontSize: 12,
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
                 color: isSelected
                     ? colors.textPrimary
@@ -153,48 +335,6 @@ class FocusScreen extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  /// Preset chips (15, 25, 45, 60 min for focus; 5, 10, 15 min for break).
-  Widget _buildDurationPresets(BuildContext context, FocusService focusService) {
-    final theme = Theme.of(context);
-    final colors = theme.extension<AppThemeColors>()!;
-    final isLocked = focusService.isRunning || focusService.isPaused;
-
-    final presets = focusService.sessionType == FocusSessionType.focus
-        ? FocusService.focusPresets
-        : FocusService.breakPresets;
-
-    final activeColor = focusService.sessionType == FocusSessionType.focus
-        ? colors.primaryAccent
-        : colors.greenAccent;
-
-    return Center(
-      child: Wrap(
-        spacing: AppSpacing.md,
-        runSpacing: AppSpacing.sm,
-        children: presets.map((duration) {
-          final isSelected = focusService.targetDuration == duration;
-          return ChoiceChip(
-            label: Text('${duration.inMinutes} min'),
-            selected: isSelected,
-            onSelected: isLocked ? null : (_) => focusService.setTargetDuration(duration),
-            selectedColor: activeColor.withValues(alpha: 0.18),
-            backgroundColor: colors.surfaceSecondary,
-            labelStyle: TextStyle(
-              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-              color: isSelected
-                  ? activeColor
-                  : colors.textSecondary.withValues(alpha: isLocked ? 0.4 : 1.0),
-            ),
-            side: BorderSide(
-              color: isSelected ? activeColor : Colors.transparent,
-              width: 1.5,
-            ),
-          );
-        }).toList(),
       ),
     );
   }
@@ -224,7 +364,7 @@ class FocusScreen extends StatelessWidget {
       statusText = isFocus ? 'Ready to focus?' : 'Ready for break?';
     }
 
-    const double circleSize = 310;
+    const double circleSize = 250;
 
     return Center(
       child: SizedBox(
@@ -236,8 +376,8 @@ class FocusScreen extends StatelessWidget {
             // Background container with active glow
             AnimatedContainer(
               duration: const Duration(milliseconds: 300),
-              width: circleSize - 20,
-              height: circleSize - 20,
+              width: circleSize - 16,
+              height: circleSize - 16,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: colors.surface,
@@ -246,29 +386,29 @@ class FocusScreen extends StatelessWidget {
                     color: focusService.isRunning
                         ? accentColor.withValues(alpha: 0.22)
                         : Colors.black.withValues(alpha: 0.05),
-                    blurRadius: focusService.isRunning ? 45 : 15,
-                    spreadRadius: focusService.isRunning ? 8 : 0,
+                    blurRadius: focusService.isRunning ? 30 : 10,
+                    spreadRadius: focusService.isRunning ? 5 : 0,
                   ),
                 ],
               ),
             ),
             // Background track ring
             SizedBox(
-              width: circleSize - 20,
-              height: circleSize - 20,
+              width: circleSize - 16,
+              height: circleSize - 16,
               child: CircularProgressIndicator(
                 value: 1.0,
-                strokeWidth: 14,
+                strokeWidth: 11,
                 color: accentColor.withValues(alpha: 0.12),
               ),
             ),
             // Dynamic countdown progress ring
             SizedBox(
-              width: circleSize - 20,
-              height: circleSize - 20,
+              width: circleSize - 16,
+              height: circleSize - 16,
               child: CircularProgressIndicator(
                 value: focusService.progressRemaining,
-                strokeWidth: 14,
+                strokeWidth: 11,
                 strokeCap: StrokeCap.round,
                 color: accentColor,
               ),
@@ -280,24 +420,24 @@ class FocusScreen extends StatelessWidget {
                 Text(
                   timeString,
                   style: theme.textTheme.displayLarge?.copyWith(
-                    fontSize: hours > 0 ? 52 : 62,
+                    fontSize: hours > 0 ? 44 : 52,
                     fontWeight: FontWeight.bold,
                     letterSpacing: -1.0,
                     color: focusService.isRunning ? accentColor : colors.textPrimary,
                   ),
                 ),
-                const SizedBox(height: AppSpacing.sm),
+                const SizedBox(height: 4),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
                   decoration: BoxDecoration(
                     color: focusService.isRunning
                         ? accentColor.withValues(alpha: 0.12)
                         : colors.surfaceSecondary,
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
                     statusText,
-                    style: theme.textTheme.labelMedium?.copyWith(
+                    style: theme.textTheme.labelSmall?.copyWith(
                       color: focusService.isRunning ? accentColor : colors.textSecondary,
                       fontWeight: FontWeight.w600,
                     ),
@@ -319,18 +459,24 @@ class FocusScreen extends StatelessWidget {
     final isFocus = (session?.type ?? focusService.sessionType) == FocusSessionType.focus;
     final accentColor = isFocus ? colors.primaryAccent : colors.greenAccent;
 
+    final nextPhaseLabel = isFocus
+        ? (focusService.isLongBreak
+            ? 'Long Break (${focusService.targetDuration.inMinutes}m)'
+            : 'Short Break (${focusService.targetDuration.inMinutes}m)')
+        : 'Cycle ${focusService.currentCycle} Focus (${focusService.targetDuration.inMinutes}m)';
+
     return Center(
       child: Container(
         width: 480,
-        padding: const EdgeInsets.all(AppSpacing.xl),
+        padding: const EdgeInsets.all(AppSpacing.lg),
         decoration: BoxDecoration(
           color: colors.surface,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(color: accentColor.withValues(alpha: 0.3), width: 1.5),
           boxShadow: [
             BoxShadow(
               color: accentColor.withValues(alpha: 0.12),
-              blurRadius: 30,
+              blurRadius: 24,
               spreadRadius: 2,
             ),
           ],
@@ -339,66 +485,72 @@ class FocusScreen extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: accentColor.withValues(alpha: 0.15),
                 shape: BoxShape.circle,
               ),
               child: Icon(
                 isFocus ? LucideIcons.partyPopper : LucideIcons.checkCircle2,
-                size: 40,
+                size: 32,
                 color: accentColor,
               ),
             ),
-            const SizedBox(height: AppSpacing.lg),
+            const SizedBox(height: AppSpacing.sm),
             Text(
               isFocus ? 'Focus Session Completed!' : 'Break Completed!',
-              style: theme.textTheme.headlineSmall?.copyWith(
+              style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.bold,
                 color: colors.textPrimary,
               ),
             ),
-            const SizedBox(height: AppSpacing.sm),
+            const SizedBox(height: 4),
             Text(
               isFocus
                   ? 'Outstanding focus! You completed your ${session?.plannedDuration.inMinutes ?? focusService.targetDuration.inMinutes}-minute session.'
                   : 'Break is complete. You are recharged and ready for deep work.',
               textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium?.copyWith(
+              style: theme.textTheme.bodySmall?.copyWith(
                 color: colors.textSecondary,
               ),
             ),
-            const SizedBox(height: AppSpacing.xl),
+            const SizedBox(height: AppSpacing.sm),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              decoration: BoxDecoration(
+                color: colors.surfaceSecondary,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                'Next: $nextPhaseLabel',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: colors.textPrimary,
+                ),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 OutlinedButton.icon(
                   onPressed: () => focusService.reset(),
-                  icon: const Icon(LucideIcons.rotateCcw, size: 18),
+                  icon: const Icon(LucideIcons.rotateCcw, size: 15),
                   label: const Text('Back to Ready'),
                   style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   ),
                 ),
                 const SizedBox(width: AppSpacing.md),
                 ElevatedButton.icon(
-                  onPressed: () async {
-                    if (isFocus) {
-                      await focusService.setSessionType(FocusSessionType.breakSession);
-                      focusService.setTargetDuration(const Duration(minutes: 5));
-                      await focusService.start();
-                    } else {
-                      await focusService.setSessionType(FocusSessionType.focus);
-                      focusService.setTargetDuration(const Duration(minutes: 25));
-                      await focusService.start();
-                    }
-                  },
-                  icon: Icon(isFocus ? LucideIcons.coffee : LucideIcons.flame, size: 18),
-                  label: Text(isFocus ? 'Start 5m Break' : 'Start 25m Focus'),
+                  onPressed: () => focusService.startNextPhase(),
+                  icon: Icon(isFocus ? LucideIcons.coffee : LucideIcons.flame, size: 15),
+                  label: Text('Start $nextPhaseLabel'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: accentColor,
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   ),
                 ),
               ],
@@ -409,7 +561,7 @@ class FocusScreen extends StatelessWidget {
     );
   }
 
-  /// Start, Pause, Resume, and Stop controls.
+  /// Start, Pause, Resume, Stop, and Skip Break controls.
   Widget _buildControls(BuildContext context, FocusService focusService) {
     final theme = Theme.of(context);
     final colors = theme.extension<AppThemeColors>()!;
@@ -426,17 +578,17 @@ class FocusScreen extends StatelessWidget {
         // Stop button with confirmation dialog
         if (focusService.isRunning || focusService.isPaused) ...[
           IconButton.filledTonal(
-            iconSize: 24,
+            iconSize: 20,
             tooltip: 'Stop Session Early',
             style: IconButton.styleFrom(
-              padding: const EdgeInsets.all(14),
+              padding: const EdgeInsets.all(12),
               backgroundColor: colors.surfaceSecondary,
               foregroundColor: colors.textSecondary,
             ),
             icon: const Icon(LucideIcons.square),
             onPressed: () => _confirmStopSession(context, focusService),
           ),
-          const SizedBox(width: AppSpacing.lg),
+          const SizedBox(width: AppSpacing.md),
         ],
 
         // Main Action Button (Start / Pause / Resume)
@@ -448,7 +600,7 @@ class FocusScreen extends StatelessWidget {
             icon: const Icon(LucideIcons.play),
             label: Text(
               isFocus ? 'Start Focus' : 'Start Break',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
           )
         else if (focusService.isRunning)
@@ -459,7 +611,7 @@ class FocusScreen extends StatelessWidget {
             icon: const Icon(LucideIcons.pause),
             label: const Text(
               'Pause',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
           )
         else if (focusService.isPaused)
@@ -470,9 +622,24 @@ class FocusScreen extends StatelessWidget {
             icon: const Icon(LucideIcons.play),
             label: const Text(
               'Resume',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
           ),
+
+        // Skip Break Action (when allowed and in break)
+        if (focusService.canSkipBreak && (focusService.isRunning || focusService.isPaused)) ...[
+          const SizedBox(width: AppSpacing.md),
+          OutlinedButton.icon(
+            onPressed: () => focusService.skipBreak(),
+            icon: const Icon(LucideIcons.skipForward, size: 15),
+            label: const Text('Skip Break'),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              foregroundColor: colors.greenAccent,
+              side: BorderSide(color: colors.greenAccent.withValues(alpha: 0.5)),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -671,7 +838,6 @@ class FocusScreen extends StatelessWidget {
   }
 
   /// Temporary development-only notification test action.
-  /// Allows testing Windows desktop notifications and audio chime without waiting for a timer to finish.
   Widget _buildDevNotificationAction(BuildContext context, FocusService focusService) {
     final colors = Theme.of(context).extension<AppThemeColors>()!;
     final settings = SettingsProvider.of(context);
