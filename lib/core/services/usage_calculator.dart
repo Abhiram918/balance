@@ -182,10 +182,16 @@ class UsageCalculator {
       if (activeState.status == FocusStatus.paused) {
         elapsed = activeState.targetDuration - activeState.remainingDuration;
       } else {
-        final diff = currentTime.difference(activeState.startTime);
-        elapsed = diff > activeState.targetDuration
-            ? activeState.targetDuration
-            : (diff.isNegative ? Duration.zero : diff);
+        // When running, remaining duration is the time remaining until expectedEndTime
+        final remaining = activeState.expectedEndTime.difference(currentTime);
+        final effectiveRemaining = remaining.isNegative ? Duration.zero : remaining;
+        elapsed = activeState.targetDuration - effectiveRemaining;
+      }
+
+      if (elapsed > activeState.targetDuration) {
+        elapsed = activeState.targetDuration;
+      } else if (elapsed.isNegative) {
+        elapsed = Duration.zero;
       }
 
       if (elapsed > Duration.zero) {

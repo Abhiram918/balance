@@ -2,6 +2,7 @@ import 'dart:math';
 import 'package:intl/intl.dart';
 import '../models/analytics_data.dart';
 import '../models/app_session.dart';
+import '../models/focus_session.dart';
 import '../models/usage_data.dart';
 import 'usage_calculator.dart';
 import 'usage_repository.dart';
@@ -60,12 +61,14 @@ class UsageAnalyticsService {
     final prevRawSessions = await repository.getSessionsForRange(prevPeriodStart, prevPeriodEnd);
     final prevSessions = List<AppSession>.from(prevRawSessions);
 
-    // 3. Fetch focus sessions for the period
+    // 3. Fetch focus sessions for the period (excluding breaks)
     Duration totalFocusTime = Duration.zero;
     try {
       final focusRecords = await repository.getFocusSessionsForRange(periodStart, periodEnd);
       for (final rec in focusRecords) {
-        totalFocusTime += rec.actualDuration;
+        if (rec.type == FocusSessionType.focus) {
+          totalFocusTime += rec.actualDuration;
+        }
       }
     } catch (_) {}
 

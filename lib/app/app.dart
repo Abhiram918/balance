@@ -48,6 +48,7 @@ class _BalanceAppState extends State<BalanceApp> with WidgetsBindingObserver {
 
   @override
   Future<AppExitResponse> didRequestAppExit() async {
+    await widget.focusService.handleAppShutdown();
     await widget.tracker.stop();
     return AppExitResponse.exit;
   }

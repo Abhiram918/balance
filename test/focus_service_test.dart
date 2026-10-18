@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:balance/core/models/focus_session.dart';
@@ -170,8 +171,9 @@ void main() {
       // Fast forward past the end time
       simulatedTime = simulatedTime.add(const Duration(minutes: 25, seconds: 1));
 
-      // Re-evaluate
-      await service.init(); // Simulating refresh or tick
+      // Trigger clock tick
+      service.tick();
+      await service.pendingDbOp;
 
       expect(service.status, equals(FocusStatus.completed));
       expect(service.remainingDuration, equals(Duration.zero));
@@ -234,52 +236,204 @@ void main() {
       serviceB.dispose();
     });
 
-    test('Session expiring while app is closed transitions to completed and writes to history', () async {
-      final serviceA = FocusService(repository: repository, clock: clock);
+    test('Stopping after pause and resume strictly excludes paused duration', () async {
+      // 1. Start a 25-minute focus session
+      final service = FocusService(repository: repository, clock: clock);
+      await service.init();
+      await service.start();
+
+      // 2. Advance simulated time by 5 minutes
+      simulatedTime = simulatedTime.add(const Duration(minutes: 5));
+
+      // 3. Pause the session
+      await service.pause();
+      expect(service.status, equals(FocusStatus.paused));
+      expect(service.remainingDuration, equals(const Duration(minutes: 20)));
+
+      // 4. Advance simulated time by 30 minutes while paused
+      simulatedTime = simulatedTime.add(const Duration(minutes: 30));
+
+      // 5. Resume the session
+      await service.resume();
+      expect(service.status, equals(FocusStatus.running));
+
+      // 6. Advance simulated time by 2 minutes
+      simulatedTime = simulatedTime.add(const Duration(minutes: 2));
+
+      // 7. Stop the session
+      await service.stop();
+
+      // Expected result: actual focus duration is exactly 7 minutes, NOT 37m or 25m
+      expect(service.status, equals(FocusStatus.idle));
+      expect(service.recentSessions.length, equals(1));
+      final record = service.recentSessions.first;
+      expect(record.actualDuration, equals(const Duration(minutes: 7)));
+      expect(record.plannedDuration, equals(const Duration(minutes: 25)));
+      expect(record.completedNaturally, isFalse);
+
+      service.dispose();
+    });
+
+    test('Stopping while paused and across multiple pause/resume cycles excludes all paused time', () async {
+      final service = FocusService(repository: repository, clock: clock);
+      await service.init();
+      await service.start();
+
+      // Run 3 min, pause for 10 min
+      simulatedTime = simulatedTime.add(const Duration(minutes: 3));
+      await service.pause();
+      simulatedTime = simulatedTime.add(const Duration(minutes: 10));
+
+      // Resume, run 4 min, pause for 15 min
+      await service.resume();
+      simulatedTime = simulatedTime.add(const Duration(minutes: 4));
+      await service.pause();
+      simulatedTime = simulatedTime.add(const Duration(minutes: 15));
+
+      // Stop while paused
+      await service.stop();
+
+      expect(service.recentSessions.length, equals(1));
+      final record = service.recentSessions.first;
+      // Actual focus time is 3m + 4m = 7m (25m paused time completely excluded)
+      expect(record.actualDuration, equals(const Duration(minutes: 7)));
+      expect(record.completedNaturally, isFalse);
+
+      service.dispose();
+    });
+
+    test('Immediate stops under 5-second minimum threshold are discarded without cluttering history', () async {
+      final service = FocusService(repository: repository, clock: clock);
+      await service.init();
+      await service.start();
+
+      // Advance by only 2 seconds (< 5 seconds threshold)
+      simulatedTime = simulatedTime.add(const Duration(seconds: 2));
+      await service.stop();
+
+      // Must be discarded from history
+      expect(service.recentSessions.isEmpty, isTrue);
+
+      // Must cleanly clear ActiveFocus from SQLite (no orphaned record)
+      final active = await repository.getActiveFocusState();
+      expect(active, isNull);
+
+      // Now start another session and run for 6 seconds (>= 5 seconds threshold)
+      await service.start();
+      simulatedTime = simulatedTime.add(const Duration(seconds: 6));
+      await service.stop();
+
+      expect(service.recentSessions.length, equals(1));
+      expect(service.recentSessions.first.actualDuration, equals(const Duration(seconds: 6)));
+      expect(service.recentSessions.first.completedNaturally, isFalse);
+
+      service.dispose();
+    });
+
+    test('Session expiring while app is closed is recovered as interrupted without false completion notifications or unearned duration', () async {
+      final fakeNotifier = FakeNotificationService();
+      final serviceA = FocusService(
+        repository: repository,
+        notificationService: fakeNotifier,
+        clock: clock,
+      );
       await serviceA.init();
       await serviceA.start();
 
-      // App is closed. Time passes beyond expected end time (35 minutes later).
+      // Advance 10 minutes while app is running, and sync active state before unexpected exit
+      simulatedTime = simulatedTime.add(const Duration(minutes: 10));
+      serviceA.tick();
+      await serviceA.syncActiveState();
+      await serviceA.pendingDbOp;
       serviceA.dispose();
-      simulatedTime = simulatedTime.add(const Duration(minutes: 35));
 
-      // Reopen app
-      final serviceB = FocusService(repository: repository, clock: clock);
+      // Time passes beyond the 25-minute expected end time while Balance is NOT running
+      simulatedTime = simulatedTime.add(const Duration(hours: 2));
+
+      // Reopen Balance
+      final serviceB = FocusService(
+        repository: repository,
+        notificationService: fakeNotifier,
+        clock: clock,
+      );
       await serviceB.init();
+      await serviceB.pendingDbOp;
 
-      expect(serviceB.status, equals(FocusStatus.completed));
-      expect(serviceB.remainingDuration, equals(Duration.zero));
+      // Must be restored as idle (ready for next session)
+      expect(serviceB.status, equals(FocusStatus.idle));
+      expect(serviceB.remainingDuration, equals(const Duration(minutes: 25)));
+
+      // Must be recorded as interrupted (completedNaturally == false), crediting only the 10m actually spent
       expect(serviceB.recentSessions.length, equals(1));
-      expect(serviceB.recentSessions.first.completedNaturally, isTrue);
+      final recoveredRecord = serviceB.recentSessions.first;
+      expect(recoveredRecord.completedNaturally, isFalse);
+      expect(recoveredRecord.actualDuration, equals(const Duration(minutes: 10)));
+      expect(recoveredRecord.plannedDuration, equals(const Duration(minutes: 25)));
 
-      // Ensure active state is cleared
+      // Must NOT send false congratulations notification or play audio chime
+      expect(fakeNotifier.notifyCount, equals(0));
+
+      // Active state must be cleared from SQLite
       final active = await repository.getActiveFocusState();
       expect(active, isNull);
 
       serviceB.dispose();
     });
 
-    test('Preventing duplicate completion and history entries', () async {
+    test('Preventing duplicate completion and history entries across multiple inits', () async {
       final service = FocusService(repository: repository, clock: clock);
       await service.init();
       await service.start();
 
-      // Session expires while closed
+      simulatedTime = simulatedTime.add(const Duration(minutes: 10));
+      service.tick();
+      await service.syncActiveState();
+      await service.pendingDbOp;
       service.dispose();
+
       simulatedTime = simulatedTime.add(const Duration(minutes: 30));
 
       final service2 = FocusService(repository: repository, clock: clock);
       await service2.init();
+      await service2.pendingDbOp;
       expect(service2.recentSessions.length, equals(1));
 
       // Calling init again must not create duplicate entry
       await service2.init();
+      await service2.pendingDbOp;
       expect(service2.recentSessions.length, equals(1));
 
       final dbSessions = await repository.getRecentFocusSessions();
       expect(dbSessions.length, equals(1));
 
       service2.dispose();
+    });
+
+    test('Rapid sequential state transitions execute in serialized order without database races', () async {
+      final service = FocusService(repository: repository, clock: clock);
+      await service.init();
+
+      // Fire multiple transitions consecutively without waiting
+      unawaited(service.start());
+      simulatedTime = simulatedTime.add(const Duration(seconds: 1));
+      unawaited(service.pause());
+      simulatedTime = simulatedTime.add(const Duration(seconds: 1));
+      unawaited(service.resume());
+      simulatedTime = simulatedTime.add(const Duration(seconds: 10));
+      unawaited(service.stop());
+
+      // Wait for all enqueued asynchronous database writes to complete
+      await service.pendingDbOp;
+
+      expect(service.status, equals(FocusStatus.idle));
+      final active = await repository.getActiveFocusState();
+      expect(active, isNull);
+
+      final dbSessions = await repository.getRecentFocusSessions();
+      expect(dbSessions.length, equals(1));
+      expect(dbSessions.first.completedNaturally, isFalse);
+
+      service.dispose();
     });
 
     test('triggerTestNotification invokes notification pipeline without mutating timer or adding history', () async {

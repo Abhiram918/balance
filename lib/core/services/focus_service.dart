@@ -36,6 +36,10 @@ class FocusService extends ChangeNotifier {
     Duration(minutes: 15),
   ];
 
+  /// Minimum focus duration threshold (5 seconds). Sessions stopped earlier
+  /// are discarded to prevent accidental clutter in history.
+  static const Duration minSessionDuration = Duration(seconds: 5);
+
   FocusService({
     required this.repository,
     this.notificationService,
@@ -75,7 +79,29 @@ class FocusService extends ChangeNotifier {
     return (_remainingDuration.inSeconds / _targetDuration.inSeconds).clamp(0.0, 1.0);
   }
 
-  /// Initializes the service, restores any active session from SQLite,
+  Future<void> _dbQueue = Future.value();
+  Future<void>? _pendingDbOp;
+
+  /// Exposes the pending database write queue for deterministic test synchronization.
+  Future<void> get pendingDbOp => _pendingDbOp ?? Future.value();
+
+  /// Enqueues database operations sequentially to prevent write races.
+  Future<void> _enqueueDbOp(Future<void> Function() op) {
+    final next = _dbQueue.then((_) async {
+      if (_isDisposed) return;
+      try {
+        await op();
+      } catch (e, stack) {
+        debugPrint('FocusService persistence error: $e\n$stack');
+      }
+    });
+    _dbQueue = next;
+    _pendingDbOp = next;
+    return next;
+  }
+
+  /// Initializes the service, restores active session state if valid,
+  /// handles recovery of interrupted sessions without false notifications,
   /// and loads recent session history.
   Future<void> init() async {
     _recentSessions = await repository.getRecentFocusSessions();
@@ -89,12 +115,39 @@ class FocusService extends ChangeNotifier {
       if (active.status == FocusStatus.running) {
         final now = _clock();
         if (now.isAfter(active.expectedEndTime) || now.isAtSameMomentAs(active.expectedEndTime)) {
-          // Session expired while the app was closed
-          _expectedEndTime = active.expectedEndTime;
-          _remainingDuration = Duration.zero;
-          await _handleNaturalCompletion(activeStartTime: active.startTime, activeEndTime: active.expectedEndTime);
+          // Session expired while Balance was closed or PC was off.
+          // This was an INTERRUPTED session. Do NOT claim natural completion,
+          // do NOT emit audio/toast notifications, and do NOT credit unearned full duration.
+          final rawActual = active.targetDuration - active.remainingDuration;
+          final actual = rawActual > active.targetDuration
+              ? active.targetDuration
+              : (rawActual.isNegative ? Duration.zero : rawActual);
+
+          if (actual >= minSessionDuration) {
+            final record = FocusSessionRecord(
+              type: active.type,
+              plannedDuration: active.targetDuration,
+              actualDuration: actual,
+              startTime: active.startTime,
+              endTime: active.startTime.add(actual),
+              completedNaturally: false,
+            );
+            await _enqueueDbOp(() async {
+              await repository.insertFocusSession(record);
+              await repository.clearActiveFocusState();
+              _recentSessions = await repository.getRecentFocusSessions();
+            });
+          } else {
+            await _enqueueDbOp(() => repository.clearActiveFocusState());
+          }
+
+          _status = FocusStatus.idle;
+          _remainingDuration = _targetDuration;
+          _startTime = null;
+          _expectedEndTime = null;
+          _lastCompletedSession = null;
         } else {
-          // Session is still running
+          // Session is still running within its target window. Resume ticking.
           _status = FocusStatus.running;
           _expectedEndTime = active.expectedEndTime;
           _remainingDuration = active.expectedEndTime.difference(now);
@@ -141,9 +194,6 @@ class FocusService extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void>? _pendingDbOp;
-  Future<void> get pendingDbOp => _pendingDbOp ?? Future.value();
-
   /// Starts a new focus or break session.
   Future<void> start() async {
     if (isRunning) return;
@@ -158,15 +208,15 @@ class FocusService extends ChangeNotifier {
     _startTicker();
     notifyListeners();
 
-    _pendingDbOp = repository.saveActiveFocusState(ActiveFocusState(
+    final activeState = ActiveFocusState(
       type: _sessionType,
       status: _status,
       targetDuration: _targetDuration,
       startTime: _startTime!,
       expectedEndTime: _expectedEndTime!,
       remainingDuration: _remainingDuration,
-    ));
-    await _pendingDbOp;
+    );
+    await _enqueueDbOp(() => repository.saveActiveFocusState(activeState));
   }
 
   /// Pauses the running session.
@@ -178,24 +228,24 @@ class FocusService extends ChangeNotifier {
 
     final now = _clock();
     if (_expectedEndTime != null) {
-      _remainingDuration = _expectedEndTime!.difference(now);
-      if (_remainingDuration.isNegative) {
-        _remainingDuration = Duration.zero;
-      }
+      final remaining = _expectedEndTime!.difference(now);
+      _remainingDuration = remaining.isNegative
+          ? Duration.zero
+          : (remaining > _targetDuration ? _targetDuration : remaining);
     }
 
     _status = FocusStatus.paused;
     notifyListeners();
 
-    _pendingDbOp = repository.saveActiveFocusState(ActiveFocusState(
+    final activeState = ActiveFocusState(
       type: _sessionType,
       status: _status,
       targetDuration: _targetDuration,
       startTime: _startTime ?? now,
       expectedEndTime: _expectedEndTime ?? now,
       remainingDuration: _remainingDuration,
-    ));
-    await _pendingDbOp;
+    );
+    await _enqueueDbOp(() => repository.saveActiveFocusState(activeState));
   }
 
   /// Resumes a paused session.
@@ -209,18 +259,21 @@ class FocusService extends ChangeNotifier {
     _startTicker();
     notifyListeners();
 
-    _pendingDbOp = repository.saveActiveFocusState(ActiveFocusState(
+    final activeState = ActiveFocusState(
       type: _sessionType,
       status: _status,
       targetDuration: _targetDuration,
       startTime: _startTime ?? now,
       expectedEndTime: _expectedEndTime!,
       remainingDuration: _remainingDuration,
-    ));
-    await _pendingDbOp;
+    );
+    await _enqueueDbOp(() => repository.saveActiveFocusState(activeState));
   }
 
   /// Stops an active session early.
+  ///
+  /// Correctly excludes all paused time from actual focus duration. Discards
+  /// accidental near-zero-duration sessions (< 5s) to prevent cluttering history.
   Future<void> stop() async {
     if (_isFinalizing) return;
     if (_status == FocusStatus.idle) return;
@@ -230,22 +283,23 @@ class FocusService extends ChangeNotifier {
     _isFinalizing = true;
 
     final now = _clock();
-    final Duration actual;
-    if (_startTime != null) {
-      final elapsed = now.difference(_startTime!);
-      actual = elapsed > _targetDuration ? _targetDuration : (elapsed.isNegative ? Duration.zero : elapsed);
-    } else {
-      actual = _targetDuration - _remainingDuration;
+    if (isRunning && _expectedEndTime != null) {
+      final remaining = _expectedEndTime!.difference(now);
+      _remainingDuration = remaining.isNegative
+          ? Duration.zero
+          : (remaining > _targetDuration ? _targetDuration : remaining);
     }
 
-    final record = FocusSessionRecord(
-      type: _sessionType,
-      plannedDuration: _targetDuration,
-      actualDuration: actual,
-      startTime: _startTime ?? now,
-      endTime: now,
-      completedNaturally: false,
-    );
+    // Active focus time strictly excludes paused intervals:
+    final rawActual = _targetDuration - _remainingDuration;
+    final actual = rawActual > _targetDuration
+        ? _targetDuration
+        : (rawActual.isNegative ? Duration.zero : rawActual);
+
+    final sessionStartTime = _startTime ?? now.subtract(actual);
+    final sessionEndTime = now;
+    final currentType = _sessionType;
+    final planned = _targetDuration;
 
     // Immediately update in-memory state so UI updates without waiting for DB I/O
     _status = FocusStatus.idle;
@@ -255,30 +309,47 @@ class FocusService extends ChangeNotifier {
     _lastCompletedSession = null;
     notifyListeners();
 
-    _pendingDbOp = () async {
+    await _enqueueDbOp(() async {
       try {
-        await repository.insertFocusSession(record);
+        if (actual >= minSessionDuration) {
+          final record = FocusSessionRecord(
+            type: currentType,
+            plannedDuration: planned,
+            actualDuration: actual,
+            startTime: sessionStartTime,
+            endTime: sessionEndTime,
+            completedNaturally: false,
+          );
+          await repository.insertFocusSession(record);
+        }
         await repository.clearActiveFocusState();
         _recentSessions = await repository.getRecentFocusSessions();
-        notifyListeners();
       } finally {
         _isFinalizing = false;
+        notifyListeners();
       }
-    }();
-    await _pendingDbOp;
+    });
   }
 
   /// Resets state back to ready/idle for the current duration and type.
   Future<void> reset() async {
     _ticker?.cancel();
     _ticker = null;
-    await repository.clearActiveFocusState();
     _status = FocusStatus.idle;
     _remainingDuration = _targetDuration;
     _startTime = null;
     _expectedEndTime = null;
     _lastCompletedSession = null;
     notifyListeners();
+    await _enqueueDbOp(() => repository.clearActiveFocusState());
+  }
+
+  /// Gracefully flushes and persists state during application shutdown.
+  Future<void> handleAppShutdown() async {
+    if (_status == FocusStatus.running) {
+      await pause();
+    }
+    await pendingDbOp;
   }
 
   void _startTicker() {
@@ -287,6 +358,27 @@ class FocusService extends ChangeNotifier {
       _tick();
     });
   }
+
+  /// Persists current active timer state to SQLite immediately.
+  Future<void> syncActiveState() async {
+    if (_status == FocusStatus.idle) return;
+    final now = _clock();
+    final activeState = ActiveFocusState(
+      type: _sessionType,
+      status: _status,
+      targetDuration: _targetDuration,
+      startTime: _startTime ?? now,
+      expectedEndTime: _expectedEndTime ?? now,
+      remainingDuration: _remainingDuration,
+    );
+    await _enqueueDbOp(() => repository.saveActiveFocusState(activeState));
+  }
+
+  /// Manually triggers a clock tick. Visible for deterministic testing.
+  @visibleForTesting
+  void tick() => _tick();
+
+  int _tickCount = 0;
 
   /// Periodic tick handler using wall-clock time difference to prevent drift.
   void _tick() {
@@ -305,6 +397,11 @@ class FocusService extends ChangeNotifier {
       );
     } else {
       _remainingDuration = remaining;
+      _tickCount++;
+      if (_tickCount % 15 == 0) {
+        // Periodic sync of remaining duration for crash/power-loss resilience
+        syncActiveState();
+      }
       notifyListeners();
     }
   }
@@ -316,34 +413,38 @@ class FocusService extends ChangeNotifier {
     if (_isFinalizing) return;
     _isFinalizing = true;
 
-    try {
-      final record = FocusSessionRecord(
-        type: _sessionType,
-        plannedDuration: _targetDuration,
-        actualDuration: _targetDuration,
-        startTime: activeStartTime,
-        endTime: activeEndTime,
-        completedNaturally: true,
-      );
+    final currentType = _sessionType;
+    final planned = _targetDuration;
 
-      await repository.insertFocusSession(record);
-      await repository.clearActiveFocusState();
+    final record = FocusSessionRecord(
+      type: currentType,
+      plannedDuration: planned,
+      actualDuration: planned,
+      startTime: activeStartTime,
+      endTime: activeEndTime,
+      completedNaturally: true,
+    );
 
-      _lastCompletedSession = record;
-      _recentSessions = await repository.getRecentFocusSessions();
-      _status = FocusStatus.completed;
-      _remainingDuration = Duration.zero;
-
-      // Trigger Windows desktop & audio notification
-      notificationService?.notifySessionCompleted(
-        type: _sessionType,
-        completedNaturally: true,
-      );
-    } finally {
-      _isFinalizing = false;
-    }
-
+    _lastCompletedSession = record;
+    _status = FocusStatus.completed;
+    _remainingDuration = Duration.zero;
     notifyListeners();
+
+    await _enqueueDbOp(() async {
+      try {
+        await repository.insertFocusSession(record);
+        await repository.clearActiveFocusState();
+        _recentSessions = await repository.getRecentFocusSessions();
+        // Trigger Windows desktop & audio notification for authentic active completion
+        notificationService?.notifySessionCompleted(
+          type: currentType,
+          completedNaturally: true,
+        );
+      } finally {
+        _isFinalizing = false;
+        notifyListeners();
+      }
+    });
   }
 
   /// Development-only method to safely test desktop notifications.

@@ -51,6 +51,7 @@ void main() async {
   final trayService = WindowsTrayService(
     onShutdown: () async {
       await tracker.stop();
+      await focusService.handleAppShutdown();
       enforcementService.dispose();
       await repository.close();
     },
