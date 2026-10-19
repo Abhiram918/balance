@@ -231,11 +231,7 @@ class _FocusAppPickerDialogState extends State<FocusAppPickerDialog> {
           ),
           IconButton(
             icon: _isLoading
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
+                ? const Icon(LucideIcons.loader2, size: 16)
                 : const Icon(LucideIcons.refreshCw, size: 16),
             tooltip: 'Rescan Installed Applications',
             onPressed: _isLoading ? null : () => _loadApplications(forceRefresh: true),
@@ -455,7 +451,16 @@ class _FocusAppPickerDialogState extends State<FocusAppPickerDialog> {
 
   Widget _buildAppList(BuildContext context, AppThemeColors colors) {
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(LucideIcons.loader2, size: 16),
+            SizedBox(width: 8),
+            Text('Scanning applications...'),
+          ],
+        ),
+      );
     }
 
     if (_errorMessage != null) {

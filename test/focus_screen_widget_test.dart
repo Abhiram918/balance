@@ -117,6 +117,9 @@ class FakeUsageRepository extends UsageRepository {
   Future<List<AppLimit>> getAllLimits() async => [];
 
   @override
+  Future<List<Map<String, String>>> getDistinctTrackedAppsWithPaths() async => [];
+
+  @override
   Future<void> close() async {}
 }
 
@@ -153,16 +156,12 @@ void main() {
         ],
         windowsAppsDirectoryProvider: () => [],
         selfExecutablePathProvider: () => 'C:\\Balance\\balance.exe',
+        fileExistsProvider: (path) => true,
       );
     });
 
-    tearDown(() async {
-      if (focusService.isRunning || focusService.isPaused) {
-        await focusService.stop();
-      }
-      await focusService.pendingDbOp;
+    tearDown(() {
       focusService.dispose();
-      await repository.close();
     });
 
     final testTheme = ThemeData.dark().copyWith(
@@ -252,10 +251,7 @@ void main() {
 
       // Stop session cleanly before test ends to cancel ticker
       await focusService.stop();
-      await focusService.pendingDbOp;
-
-      // Settle any remaining snackbar timers
-      await tester.pump(const Duration(seconds: 4));
+      await tester.pump(const Duration(milliseconds: 100));
     });
 
     testWidgets('3. Creating a custom preset with validation and saving it persists to list', (tester) async {
