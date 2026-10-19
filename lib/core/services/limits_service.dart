@@ -145,6 +145,7 @@ class LimitsService extends ChangeNotifier {
 
   /// Returns whether usage has reached the warning threshold.
   bool isNearLimit(AppLimit limit) {
+    if (limit.limitDuration <= Duration.zero) return false;
     final used = getUsageForApp(limit.appName, exePath: limit.exePath);
     return used >= limit.warningDuration && used < limit.limitDuration;
   }
@@ -168,8 +169,8 @@ class LimitsService extends ChangeNotifier {
     if (cleanName.isEmpty) {
       throw ArgumentError('Application name cannot be empty');
     }
-    if (duration <= Duration.zero) {
-      throw ArgumentError('Limit duration must be greater than zero');
+    if (duration.isNegative) {
+      throw ArgumentError('Limit duration cannot be negative');
     }
     if (warningPercentage < 10 || warningPercentage > 100) {
       throw ArgumentError('Warning percentage must be between 10% and 100%');
@@ -208,8 +209,8 @@ class LimitsService extends ChangeNotifier {
     bool? isEnabled,
     bool? isEnforced,
   }) async {
-    if (duration <= Duration.zero) {
-      throw ArgumentError('Limit duration must be greater than zero');
+    if (duration.isNegative) {
+      throw ArgumentError('Limit duration cannot be negative');
     }
     if (warningPercentage < 10 || warningPercentage > 100) {
       throw ArgumentError('Warning percentage must be between 10% and 100%');
@@ -316,7 +317,9 @@ class LimitsService extends ChangeNotifier {
       final used = getUsageForApp(limit.appName, exePath: limit.exePath);
 
       // 1. Warning Threshold Notification
-      if (used >= limit.warningDuration && used < limit.limitDuration) {
+      if (limit.limitDuration > Duration.zero &&
+          used >= limit.warningDuration &&
+          used < limit.limitDuration) {
         final alreadySent = await repository.hasLimitNotificationBeenSent(
           limit.id!,
           'warning',
