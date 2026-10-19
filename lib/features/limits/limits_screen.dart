@@ -921,11 +921,16 @@ class _LimitDialogState extends State<_LimitDialog> {
                     'Daily Allowance',
                     style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
                   ),
-                  Text(
-                    _hours == 0 && _minutes == 0 ? '0m (Blocked all day)' : '${_hours}h ${_minutes}m',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: _hours == 0 && _minutes == 0 ? Colors.redAccent : colors.primaryAccent,
+                  const SizedBox(width: AppSpacing.sm),
+                  Flexible(
+                    child: Text(
+                      _hours == 0 && _minutes == 0 ? '0m (Blocked all day)' : '${_hours}h ${_minutes}m',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: _hours == 0 && _minutes == 0 ? Colors.redAccent : colors.primaryAccent,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.end,
                     ),
                   ),
                 ],
@@ -1018,10 +1023,14 @@ class _LimitDialogState extends State<_LimitDialog> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      'Warning Notification Threshold',
-                      style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                    Flexible(
+                      child: Text(
+                        'Warning Notification Threshold',
+                        style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
+                    const SizedBox(width: AppSpacing.sm),
                     Text(
                       '$_warningPercentage%',
                       style: theme.textTheme.titleSmall?.copyWith(
