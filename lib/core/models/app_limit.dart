@@ -20,7 +20,7 @@ class AppLimit {
     this.isEnforced = false,
     required this.createdAt,
     required this.updatedAt,
-  }) : assert(limitDuration > Duration.zero, 'Limit duration must be positive'),
+  }) : assert(!limitDuration.isNegative, 'Limit duration cannot be negative'),
        assert(
          warningThresholdPercentage >= 10 && warningThresholdPercentage <= 100,
          'Warning threshold must be between 10% and 100%',
