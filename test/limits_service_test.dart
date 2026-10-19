@@ -110,7 +110,7 @@ void main() {
       expect(
         () => service.createLimit(
           appName: 'Game',
-          duration: Duration.zero,
+          duration: const Duration(minutes: -1),
         ),
         throwsArgumentError,
       );
@@ -542,6 +542,68 @@ void main() {
 
       final available = await service.getAvailableApplications();
       expect(available, contains('Obsidian'));
+    });
+
+    test('Zero-minute limit creation, edit, reload, and notification behavior', () async {
+      final service = LimitsService(
+        repository: repository,
+        notificationService: notificationService,
+        clock: getClock,
+      );
+      await service.init();
+
+      // 1. Create a zero-minute limit
+      final zeroLimit = await service.createLimit(
+        appName: 'TikTok',
+        exePath: r'C:\tiktok.exe',
+        duration: Duration.zero,
+        warningPercentage: 80,
+        isEnforced: true,
+      );
+
+      expect(zeroLimit.limitDuration, equals(Duration.zero));
+      expect(zeroLimit.limitMinutes, equals(0));
+      expect(zeroLimit.isEnforced, isTrue);
+
+      // 2. Metrics for zero-minute limit
+      expect(service.isLimitExceeded(zeroLimit), isTrue);
+      expect(service.isNearLimit(zeroLimit), isFalse);
+      expect(service.getRemainingAllowance(zeroLimit), equals(Duration.zero));
+      expect(service.getProgress(zeroLimit), equals(1.0));
+
+      // 3. Evaluate usage: should trigger limit-reached notification, NOT warning notification
+      await service.evaluateUsage();
+      expect(notificationService.warnings, isEmpty);
+      expect(notificationService.reached, equals(['TikTok']));
+
+      // 4. Repeated evaluation on same day: should not duplicate notification
+      await service.evaluateUsage();
+      expect(notificationService.reached, equals(['TikTok']));
+
+      // 5. Update zero-minute limit to another zero-minute or edited values
+      await service.updateLimit(
+        id: zeroLimit.id!,
+        duration: Duration.zero,
+        warningPercentage: 90,
+        isEnforced: false,
+      );
+      expect(service.limits.first.limitDuration, equals(Duration.zero));
+      expect(service.limits.first.isEnforced, isFalse);
+
+      // 6. Persistence and restart verification
+      final serviceRestarted = LimitsService(
+        repository: repository,
+        notificationService: notificationService,
+        clock: getClock,
+      );
+      await serviceRestarted.init();
+
+      expect(serviceRestarted.limits.length, equals(1));
+      final reloaded = serviceRestarted.limits.first;
+      expect(reloaded.appName, equals('TikTok'));
+      expect(reloaded.limitDuration, equals(Duration.zero));
+      expect(reloaded.limitMinutes, equals(0));
+      expect(reloaded.isEnforced, isFalse);
     });
   });
 }

@@ -314,5 +314,49 @@ void main() {
       expect(find.text('Telegram'), findsNothing);
       expect(find.text('Spotify'), findsNothing);
     });
+
+    testWidgets('0-minute limit can be selected via "0m (Blocked)" preset chip and saved successfully', (tester) async {
+      tester.view.physicalSize = const Size(1600, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      repository.distinctApps.add('Instagram');
+      await tester.pumpWidget(buildTestApp());
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Set Your First Limit'));
+      await tester.pumpAndSettle();
+
+      // Enter application name
+      final appNameField = find.widgetWithText(TextField, 'Application Name');
+      if (appNameField.evaluate().isNotEmpty) {
+        await tester.enterText(appNameField, 'Instagram');
+      } else {
+        await tester.tap(find.text('Instagram').first);
+      }
+      await tester.pumpAndSettle();
+
+      // Click "0m (Blocked)" preset chip
+      final zeroPresetChip = find.text('0m (Blocked)');
+      expect(zeroPresetChip, findsOneWidget);
+      await tester.tap(zeroPresetChip);
+      await tester.pumpAndSettle();
+
+      // Verify header updates to "0m (Blocked all day)"
+      expect(find.text('0m (Blocked all day)'), findsOneWidget);
+      expect(find.text('0 minutes allowance: The application is restricted all day and blocked immediately when launched.'), findsOneWidget);
+
+      // Click Create Limit
+      await tester.tap(find.text('Create Limit'));
+      await tester.pumpAndSettle();
+
+      // Dialog should close without validation error
+      expect(find.text('Set App Limit'), findsNothing);
+      expect(find.text('Instagram'), findsOneWidget);
+      expect(limitsService.limits.length, equals(1));
+      expect(limitsService.limits.first.limitDuration, equals(Duration.zero));
+      expect(find.text('Blocked all day (0m allowance)'), findsOneWidget);
+      expect(find.text('Blocked All Day'), findsOneWidget);
+    });
   });
 }

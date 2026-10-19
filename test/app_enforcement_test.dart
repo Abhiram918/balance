@@ -497,5 +497,133 @@ void main() {
       expect(telegramProc.isAlive, isFalse);
       expect(enforcementService.isAppRestricted('Telegram'), isTrue);
     });
+
+    test('Zero-minute limit: Immediately restricts and terminates app on detection without grace period', () async {
+      final zeroLimit = AppLimit(
+        id: 10,
+        appName: 'Discord',
+        limitDuration: Duration.zero,
+        isEnabled: true,
+        isEnforced: true,
+        createdAt: testTime,
+        updatedAt: testTime,
+      );
+
+      final discordProc = MockProcess(
+        pid: 7001,
+        appName: 'Discord',
+        exeName: 'Discord.exe',
+        exePath: r'C:\Discord\Discord.exe',
+      );
+      processManager.processes.add(discordProc);
+
+      // Even with 0 usage duration, app must be immediately enforced and closed
+      await enforcementService.onForegroundAppDetected(
+        appName: 'Discord',
+        exePath: r'C:\Discord\Discord.exe',
+        limits: [zeroLimit],
+        todayUsage: Duration.zero,
+      );
+
+      expect(processManager.gracefulCloseAttempts, contains(7001));
+      expect(discordProc.isAlive, isFalse);
+      expect(enforcementService.isDailyLimitRestricted('Discord'), isTrue);
+      expect(enforcementService.isAppRestricted('Discord'), isTrue);
+    });
+
+    test('Zero-minute limit: Disabling enforcement allows application to run freely', () async {
+      final unenforcedZeroLimit = AppLimit(
+        id: 11,
+        appName: 'Discord',
+        limitDuration: Duration.zero,
+        isEnabled: true,
+        isEnforced: false, // Enforcement disabled
+        createdAt: testTime,
+        updatedAt: testTime,
+      );
+
+      final discordProc = MockProcess(
+        pid: 7002,
+        appName: 'Discord',
+        exeName: 'Discord.exe',
+        exePath: r'C:\Discord\Discord.exe',
+      );
+      processManager.processes.add(discordProc);
+
+      await enforcementService.onForegroundAppDetected(
+        appName: 'Discord',
+        exePath: r'C:\Discord\Discord.exe',
+        limits: [unenforcedZeroLimit],
+        todayUsage: Duration.zero,
+      );
+
+      expect(processManager.gracefulCloseAttempts, isNot(contains(7002)));
+      expect(discordProc.isAlive, isTrue);
+      expect(enforcementService.isDailyLimitRestricted('Discord'), isFalse);
+    });
+
+    test('Zero-minute limit: Preserves restriction across midnight resets while positive limits reset', () async {
+      final zeroLimit = AppLimit(
+        id: 12,
+        appName: 'Roblox',
+        limitDuration: Duration.zero,
+        isEnabled: true,
+        isEnforced: true,
+        createdAt: testTime,
+        updatedAt: testTime,
+      );
+      final positiveLimit = AppLimit(
+        id: 13,
+        appName: 'Steam',
+        limitDuration: const Duration(hours: 1),
+        isEnabled: true,
+        isEnforced: true,
+        createdAt: testTime,
+        updatedAt: testTime,
+      );
+
+      // Evaluate enforcements today
+      enforcementService.evaluateEnforcements(
+        [zeroLimit, positiveLimit],
+        {'roblox': Duration.zero, 'steam': const Duration(hours: 2)}, // Both exceeded today
+      );
+      expect(enforcementService.isDailyLimitRestricted('Roblox'), isTrue);
+      expect(enforcementService.isDailyLimitRestricted('Steam'), isTrue);
+
+      // Advance clock past midnight to next calendar day
+      testTime = DateTime(2026, 10, 12, 0, 1); // Monday 12:01 AM
+      enforcementService.setClock(getClock);
+
+      // Roblox (zero allowance) must STILL be restricted on the new day
+      expect(enforcementService.isDailyLimitRestricted('Roblox'), isTrue);
+      // Steam (positive allowance) must have its restriction reset
+      expect(enforcementService.isDailyLimitRestricted('Steam'), isFalse);
+    });
+
+    test('Zero-minute limit: Remains independent from Focus Mode restrictions', () async {
+      final zeroLimit = AppLimit(
+        id: 14,
+        appName: 'SocialApp',
+        limitDuration: Duration.zero,
+        isEnabled: true,
+        isEnforced: true,
+        createdAt: testTime,
+        updatedAt: testTime,
+      );
+
+      enforcementService.evaluateEnforcements([zeroLimit], {'socialapp': Duration.zero});
+      expect(enforcementService.isDailyLimitRestricted('SocialApp'), isTrue);
+      expect(enforcementService.isFocusRestricted('SocialApp'), isFalse);
+
+      // Start and clear focus mode
+      await enforcementService.setFocusRestrictions(
+        blockedApps: const [],
+        isEnforcing: true,
+      );
+      enforcementService.clearFocusRestrictions();
+
+      // Daily limit restriction for SocialApp must remain unaffected
+      expect(enforcementService.isDailyLimitRestricted('SocialApp'), isTrue);
+    });
   });
 }
