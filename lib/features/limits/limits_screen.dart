@@ -302,13 +302,23 @@ class LimitsScreen extends StatelessWidget {
                     const SizedBox(height: 2),
                     Row(
                       children: [
-                        Text(
-                          'Warning at ${limit.warningThresholdPercentage}% (${_formatDuration(limit.warningDuration)})',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: colors.textSecondary,
-                            fontSize: 12,
+                        if (limit.limitDuration > Duration.zero)
+                          Text(
+                            'Warning at ${limit.warningThresholdPercentage}% (${_formatDuration(limit.warningDuration)})',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: colors.textSecondary,
+                              fontSize: 12,
+                            ),
+                          )
+                        else
+                          Text(
+                            'Blocked all day (0m allowance)',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: limit.isEnabled ? Colors.redAccent : colors.textSecondary,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
-                        ),
                         const SizedBox(width: AppSpacing.sm),
                         Text(
                           '•',
@@ -408,15 +418,16 @@ class LimitsScreen extends StatelessWidget {
       );
     }
     if (isExceeded) {
+      final isZeroAllowance = limit.limitDuration <= Duration.zero;
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
         decoration: BoxDecoration(
           color: Colors.redAccent.withValues(alpha: 0.15),
           borderRadius: BorderRadius.circular(6),
         ),
-        child: const Text(
-          'Limit Reached',
-          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.redAccent),
+        child: Text(
+          isZeroAllowance ? 'Blocked All Day' : 'Limit Reached',
+          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.redAccent),
         ),
       );
     }
@@ -879,6 +890,7 @@ class _LimitDialogState extends State<_LimitDialog> {
     final isEditing = widget.existingLimit != null;
 
     final presets = const [
+      Duration.zero,
       Duration(minutes: 15),
       Duration(minutes: 30),
       Duration(minutes: 45),
@@ -902,9 +914,21 @@ class _LimitDialogState extends State<_LimitDialog> {
               const SizedBox(height: AppSpacing.lg),
 
               // Daily allowance section
-              Text(
-                'Daily Allowance',
-                style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Daily Allowance',
+                    style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                  ),
+                  Text(
+                    _hours == 0 && _minutes == 0 ? '0m (Blocked all day)' : '${_hours}h ${_minutes}m',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: _hours == 0 && _minutes == 0 ? Colors.redAccent : colors.primaryAccent,
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: AppSpacing.sm),
 
@@ -916,9 +940,11 @@ class _LimitDialogState extends State<_LimitDialog> {
                   final pHours = preset.inHours;
                   final pMins = preset.inMinutes % 60;
                   final isSelected = _hours == pHours && _minutes == pMins;
-                  final label = pHours > 0 && pMins > 0
-                      ? '${pHours}h ${pMins}m'
-                      : (pHours > 0 ? '${pHours}h' : '${pMins}m');
+                  final label = preset == Duration.zero
+                      ? '0m (Blocked)'
+                      : (pHours > 0 && pMins > 0
+                          ? '${pHours}h ${pMins}m'
+                          : (pHours > 0 ? '${pHours}h' : '${pMins}m'));
 
                   return ChoiceChip(
                     label: Text(label),
@@ -976,38 +1002,54 @@ class _LimitDialogState extends State<_LimitDialog> {
                   ),
                 ],
               ),
+              if (_hours == 0 && _minutes == 0) ...[
+                const SizedBox(height: AppSpacing.xs),
+                Text(
+                  '0 minutes allowance: The application is restricted all day and blocked immediately when launched.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: Colors.redAccent,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
               const SizedBox(height: AppSpacing.lg),
 
-              // Warning percentage threshold
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Warning Notification Threshold',
-                    style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
-                  ),
-                  Text(
-                    '$_warningPercentage%',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: colors.primaryAccent,
+              if (_hours > 0 || _minutes > 0) ...[
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Warning Notification Threshold',
+                      style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
                     ),
-                  ),
-                ],
-              ),
-              Slider(
-                value: _warningPercentage.toDouble(),
-                min: 50,
-                max: 95,
-                divisions: 9,
-                label: '$_warningPercentage%',
-                activeColor: colors.primaryAccent,
-                onChanged: (v) => setState(() => _warningPercentage = v.toInt()),
-              ),
-              Text(
-                'Receive an early alert when you hit $_warningPercentage% of your allowance.',
-                style: theme.textTheme.bodySmall?.copyWith(color: colors.textSecondary),
-              ),
+                    Text(
+                      '$_warningPercentage%',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: colors.primaryAccent,
+                      ),
+                    ),
+                  ],
+                ),
+                Slider(
+                  value: _warningPercentage.toDouble(),
+                  min: 50,
+                  max: 95,
+                  divisions: 9,
+                  label: '$_warningPercentage%',
+                  activeColor: colors.primaryAccent,
+                  onChanged: (v) => setState(() => _warningPercentage = v.toInt()),
+                ),
+                Text(
+                  'Receive an early alert when you hit $_warningPercentage% of your allowance.',
+                  style: theme.textTheme.bodySmall?.copyWith(color: colors.textSecondary),
+                ),
+              ] else ...[
+                Text(
+                  'Early warning is not applicable for a 0-minute allowance (the app is blocked immediately).',
+                  style: theme.textTheme.bodySmall?.copyWith(color: colors.textSecondary),
+                ),
+              ],
 
               const SizedBox(height: AppSpacing.lg),
 
@@ -1583,8 +1625,8 @@ class _LimitDialogState extends State<_LimitDialog> {
     }
 
     final totalMinutes = _hours * 60 + _minutes;
-    if (totalMinutes <= 0) {
-      setState(() => _errorText = 'Daily allowance must be at least 1 minute.');
+    if (totalMinutes < 0) {
+      setState(() => _errorText = 'Daily allowance cannot be negative.');
       return;
     }
 

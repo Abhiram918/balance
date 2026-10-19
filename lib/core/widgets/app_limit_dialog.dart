@@ -315,10 +315,10 @@ class _AppLimitDialogState extends State<AppLimitDialog> {
                     style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
                   ),
                   Text(
-                    '${_hours}h ${_minutes}m',
+                    _hours == 0 && _minutes == 0 ? '0m (Blocked all day)' : '${_hours}h ${_minutes}m',
                     style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.bold,
-                      color: colors.primaryAccent,
+                      color: _hours == 0 && _minutes == 0 ? Colors.redAccent : colors.primaryAccent,
                     ),
                   ),
                 ],
@@ -362,37 +362,54 @@ class _AppLimitDialogState extends State<AppLimitDialog> {
                   ),
                 ],
               ),
+              if (_hours == 0 && _minutes == 0) ...[
+                const SizedBox(height: AppSpacing.xs),
+                Text(
+                  '0 minutes allowance: The application is restricted all day and blocked immediately when launched.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: Colors.redAccent,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
               const SizedBox(height: AppSpacing.lg),
 
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Warning Notification Threshold',
-                    style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
-                  ),
-                  Text(
-                    '$_warningPercentage%',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: colors.primaryAccent,
+              if (_hours > 0 || _minutes > 0) ...[
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Warning Notification Threshold',
+                      style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
                     ),
-                  ),
-                ],
-              ),
-              Slider(
-                value: _warningPercentage.toDouble(),
-                min: 50,
-                max: 95,
-                divisions: 9,
-                label: '$_warningPercentage%',
-                activeColor: colors.primaryAccent,
-                onChanged: (v) => setState(() => _warningPercentage = v.toInt()),
-              ),
-              Text(
-                'Receive an early alert when you hit $_warningPercentage% of your allowance.',
-                style: theme.textTheme.bodySmall?.copyWith(color: colors.textSecondary),
-              ),
+                    Text(
+                      '$_warningPercentage%',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: colors.primaryAccent,
+                      ),
+                    ),
+                  ],
+                ),
+                Slider(
+                  value: _warningPercentage.toDouble(),
+                  min: 50,
+                  max: 95,
+                  divisions: 9,
+                  label: '$_warningPercentage%',
+                  activeColor: colors.primaryAccent,
+                  onChanged: (v) => setState(() => _warningPercentage = v.toInt()),
+                ),
+                Text(
+                  'Receive an early alert when you hit $_warningPercentage% of your allowance.',
+                  style: theme.textTheme.bodySmall?.copyWith(color: colors.textSecondary),
+                ),
+              ] else ...[
+                Text(
+                  'Early warning is not applicable for a 0-minute allowance (the app is blocked immediately).',
+                  style: theme.textTheme.bodySmall?.copyWith(color: colors.textSecondary),
+                ),
+              ],
               const SizedBox(height: AppSpacing.lg),
 
               Container(
@@ -936,8 +953,8 @@ class _AppLimitDialogState extends State<AppLimitDialog> {
     }
 
     final totalMinutes = _hours * 60 + _minutes;
-    if (totalMinutes <= 0) {
-      setState(() => _errorText = 'Daily allowance must be at least 1 minute.');
+    if (totalMinutes < 0) {
+      setState(() => _errorText = 'Daily allowance cannot be negative.');
       return;
     }
 

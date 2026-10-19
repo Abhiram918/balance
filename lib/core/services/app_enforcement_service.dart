@@ -49,6 +49,7 @@ class AppEnforcementService extends ChangeNotifier {
   // 1. Daily limits state
   final Set<String> _dailyLimitRestrictedApps = {};
   final Map<String, DateTime> _lastDailyEnforcementTime = {};
+  List<AppLimit> _lastLimits = [];
   String _activeDateKey = '';
 
   // 2. Focus session restrictions state
@@ -159,6 +160,7 @@ class AppEnforcementService extends ChangeNotifier {
 
   /// Recalculates and updates active daily restrictions across all limits based on recorded usage.
   void evaluateEnforcements(List<AppLimit> limits, Map<String, Duration> usageMap) {
+    _lastLimits = List<AppLimit>.from(limits);
     _checkDailyReset();
 
     for (final limit in limits) {
@@ -384,6 +386,7 @@ class AppEnforcementService extends ChangeNotifier {
     required List<AppLimit> limits,
     required Duration todayUsage,
   }) async {
+    _lastLimits = List<AppLimit>.from(limits);
     _checkDailyReset();
 
     // 1. Check Focus Mode restrictions
@@ -568,6 +571,12 @@ class AppEnforcementService extends ChangeNotifier {
       _activeDateKey = currentDateKey;
       _dailyLimitRestrictedApps.clear();
       _lastDailyEnforcementTime.clear();
+      // Zero-minute allowances remain restricted every day from 00:00:00
+      for (final limit in _lastLimits) {
+        if (limit.isEnabled && limit.isEnforced && limit.limitDuration <= Duration.zero) {
+          _dailyLimitRestrictedApps.add(limit.appName.trim().toLowerCase());
+        }
+      }
       // Note: Focus session restrictions are intentionally NOT cleared on calendar midnight reset.
       notifyListeners();
     }
