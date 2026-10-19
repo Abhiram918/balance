@@ -519,7 +519,7 @@ void main() {
       expect(find.text('Restrictions maintained (1 apps blocked)'), findsOneWidget);
 
       await focusService.stop();
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 100));
 
       // Switch back to Standard Pomodoro (which has unblockDuringBreaks: true)
       final standard = focusService.presets.firstWhere((p) => p.name == 'Standard Pomodoro');
@@ -534,7 +534,7 @@ void main() {
       expect(find.text('Apps unblocked during break — recharge!'), findsOneWidget);
 
       await focusService.stop();
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 100));
     });
   });
 }
