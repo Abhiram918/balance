@@ -5,7 +5,6 @@ import 'package:balance/app/app.dart';
 import 'package:balance/app/theme/app_colors.dart';
 import 'package:balance/core/models/app_limit.dart';
 import 'package:balance/core/models/app_session.dart';
-import 'package:balance/core/models/discovered_app.dart';
 import 'package:balance/core/models/focus_preset.dart';
 import 'package:balance/core/models/focus_session.dart';
 import 'package:balance/core/services/focus_service.dart';
@@ -15,7 +14,6 @@ import 'package:balance/core/services/windows_app_discovery_service.dart';
 import 'package:balance/core/services/windows_usage_tracker.dart';
 import 'package:balance/features/focus/focus_screen.dart';
 import 'package:balance/features/focus/widgets/focus_app_picker_dialog.dart';
-import 'package:balance/features/focus/widgets/focus_preset_dialog.dart';
 import 'package:balance/features/focus/widgets/focus_preset_selector.dart';
 
 class FakeUsageRepository extends UsageRepository {

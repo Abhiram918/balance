@@ -204,7 +204,6 @@ class _FocusAppPickerDialogState extends State<FocusAppPickerDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.extension<AppThemeColors>()!;
-    final isDark = theme.brightness == Brightness.dark;
 
     return AlertDialog(
       backgroundColor: colors.surface,
@@ -513,7 +512,7 @@ class _FocusAppPickerDialogState extends State<FocusAppPickerDialog> {
 
     return ListView.separated(
       itemCount: filtered.length,
-      separatorBuilder: (_, __) => Divider(height: 1, thickness: 1, color: colors.surfaceSecondary),
+      separatorBuilder: (_, _) => Divider(height: 1, thickness: 1, color: colors.surfaceSecondary),
       itemBuilder: (context, index) {
         final app = filtered[index];
         final isProtected = FocusAppPickerDialog.isProtectedApp(app.displayName, app.executablePath ?? app.executableName);

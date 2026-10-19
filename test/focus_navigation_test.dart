@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:balance/app/app.dart';
 import 'package:balance/app/theme/app_colors.dart';
 import 'package:balance/core/models/app_session.dart';
+import 'package:balance/core/models/focus_preset.dart';
 import 'package:balance/core/models/focus_session.dart';
 import 'package:balance/core/services/focus_service.dart';
 import 'package:balance/core/services/settings_service.dart';
@@ -14,9 +14,36 @@ import 'package:balance/features/focus/focus_screen.dart';
 class FakeUsageRepository extends UsageRepository {
   ActiveFocusState? _active;
   final List<FocusSessionRecord> _sessions = [];
+  final List<FocusPreset> _presets = [];
   final Map<String, String> _settings = {};
+  int _presetIdCounter = 100;
 
-  FakeUsageRepository() : super(dbName: inMemoryDatabasePath);
+  FakeUsageRepository() : super(dbName: 'fake_nav_test.db');
+
+  @override
+  Future<List<FocusPreset>> getAllFocusPresets() async => List.unmodifiable(_presets);
+
+  @override
+  Future<FocusPreset> insertFocusPreset(FocusPreset preset) async {
+    final newId = preset.id ?? _presetIdCounter++;
+    final newPreset = preset.copyWith(id: newId);
+    _presets.add(newPreset);
+    return newPreset;
+  }
+
+  @override
+  Future<void> updateFocusPreset(FocusPreset preset) async {
+    final idx = _presets.indexWhere((p) => p.id == preset.id);
+    if (idx != -1) _presets[idx] = preset;
+  }
+
+  @override
+  Future<void> deleteFocusPreset(int id) async {
+    _presets.removeWhere((p) => p.id == id);
+  }
+
+  @override
+  Future<List<Map<String, String>>> getDistinctTrackedAppsWithPaths() async => [];
 
   @override
   Future<ActiveFocusState?> getActiveFocusState() async => _active;
