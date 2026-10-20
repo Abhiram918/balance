@@ -46,6 +46,7 @@ class _OverviewDatePickerDialogState extends State<OverviewDatePickerDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.extension<AppThemeColors>()!;
+    final isDark = theme.brightness == Brightness.dark;
     final yesterday = widget.today.subtract(const Duration(days: 1));
     final isTodaySelected = _isSameDay(_selected, widget.today);
     final isYesterdaySelected = _isSameDay(_selected, yesterday);
@@ -80,12 +81,14 @@ class _OverviewDatePickerDialogState extends State<OverviewDatePickerDialog> {
                           width: 36,
                           height: 36,
                           decoration: BoxDecoration(
-                            color: const Color(0xFFEFF6FF),
+                            color: isDark
+                                ? colors.primaryAccent.withValues(alpha: 0.15)
+                                : const Color(0xFFEFF6FF),
                             borderRadius: BorderRadius.circular(10),
                           ),
-                          child: const Icon(
+                          child: Icon(
                             LucideIcons.calendar,
-                            color: Color(0xFF2563EB),
+                            color: isDark ? colors.primaryAccent : const Color(0xFF2563EB),
                             size: 18,
                           ),
                         ),
@@ -136,6 +139,7 @@ class _OverviewDatePickerDialogState extends State<OverviewDatePickerDialog> {
                     label: 'Today',
                     isSelected: isTodaySelected,
                     colors: colors,
+                    isDark: isDark,
                     onTap: () {
                       setState(() {
                         _selected = widget.today;
@@ -147,6 +151,7 @@ class _OverviewDatePickerDialogState extends State<OverviewDatePickerDialog> {
                     label: 'Yesterday',
                     isSelected: isYesterdaySelected,
                     colors: colors,
+                    isDark: isDark,
                     onTap: () {
                       setState(() {
                         _selected = yesterday;
@@ -162,8 +167,8 @@ class _OverviewDatePickerDialogState extends State<OverviewDatePickerDialog> {
               Theme(
                 data: theme.copyWith(
                   colorScheme: theme.colorScheme.copyWith(
-                    primary: const Color(0xFF2563EB),
-                    onPrimary: Colors.white,
+                    primary: isDark ? colors.primaryAccent : const Color(0xFF2563EB),
+                    onPrimary: isDark ? colors.background : Colors.white,
                     surface: colors.surface,
                     onSurface: colors.textPrimary,
                   ),
@@ -200,7 +205,7 @@ class _OverviewDatePickerDialogState extends State<OverviewDatePickerDialog> {
                         icon: const Icon(LucideIcons.rotateCcw, size: 14),
                         label: const Text('Reset to Today'),
                         style: TextButton.styleFrom(
-                          foregroundColor: const Color(0xFF2563EB),
+                          foregroundColor: isDark ? colors.primaryAccent : const Color(0xFF2563EB),
                           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
                           textStyle: const TextStyle(
                             fontSize: 12,
@@ -233,8 +238,8 @@ class _OverviewDatePickerDialogState extends State<OverviewDatePickerDialog> {
                       Navigator.of(context).pop(_selected);
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF2563EB),
-                      foregroundColor: Colors.white,
+                      backgroundColor: isDark ? colors.primaryAccent : const Color(0xFF2563EB),
+                      foregroundColor: isDark ? colors.background : Colors.white,
                       elevation: 0,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -260,6 +265,7 @@ class _OverviewDatePickerDialogState extends State<OverviewDatePickerDialog> {
     required String label,
     required bool isSelected,
     required AppThemeColors colors,
+    required bool isDark,
     required VoidCallback onTap,
   }) {
     return InkWell(
@@ -268,10 +274,14 @@ class _OverviewDatePickerDialogState extends State<OverviewDatePickerDialog> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF2563EB) : const Color(0xFFF1F5F9),
+          color: isSelected
+              ? (isDark ? colors.primaryAccent : const Color(0xFF2563EB))
+              : (isDark ? colors.surfaceSecondary : const Color(0xFFF1F5F9)),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: isSelected ? const Color(0xFF2563EB) : colors.surfaceSecondary,
+            color: isSelected
+                ? (isDark ? colors.primaryAccent : const Color(0xFF2563EB))
+                : colors.surfaceSecondary,
           ),
         ),
         child: Text(
@@ -279,7 +289,9 @@ class _OverviewDatePickerDialogState extends State<OverviewDatePickerDialog> {
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w600,
-            color: isSelected ? Colors.white : colors.textPrimary,
+            color: isSelected
+                ? (isDark ? colors.background : Colors.white)
+                : colors.textPrimary,
           ),
         ),
       ),

@@ -61,6 +61,7 @@ class DailySummaryCard extends StatelessWidget {
   /// Card Header with Chart Icon, Title, Subtitle, and Date Selector Pill
   Widget _buildHeader(BuildContext context, AppThemeColors colors) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final isCustomDate = dateLabel != null && dateLabel != 'Today';
     final subtitle = isCustomDate
         ? 'Your computer usage and activity for $dateLabel'
@@ -76,12 +77,14 @@ class DailySummaryCard extends StatelessWidget {
                 width: 38,
                 height: 38,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFEFF6FF),
+                  color: isDark
+                      ? colors.primaryAccent.withValues(alpha: 0.15)
+                      : const Color(0xFFEFF6FF),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(
+                child: Icon(
                   LucideIcons.barChart2,
-                  color: Color(0xFF2563EB),
+                  color: isDark ? colors.primaryAccent : const Color(0xFF2563EB),
                   size: 20,
                 ),
               ),
@@ -314,10 +317,14 @@ class DailySummaryCard extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
+                color: theme.brightness == Brightness.dark
+                    ? colors.surfaceSecondary.withValues(alpha: 0.5)
+                    : const Color(0xFFF8FAFC),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: colors.surfaceSecondary.withValues(alpha: 0.5),
+                  color: theme.brightness == Brightness.dark
+                      ? colors.surfaceSecondary
+                      : colors.surfaceSecondary.withValues(alpha: 0.5),
                 ),
               ),
               child: Column(
@@ -332,14 +339,18 @@ class DailySummaryCard extends StatelessWidget {
                         Container(
                           width: 28,
                           height: 28,
-                          decoration: const BoxDecoration(
-                            color: Color(0xFFEFF6FF),
+                          decoration: BoxDecoration(
+                            color: theme.brightness == Brightness.dark
+                                ? colors.primaryAccent.withValues(alpha: 0.15)
+                                : const Color(0xFFEFF6FF),
                             shape: BoxShape.circle,
                           ),
-                          child: const Icon(
+                          child: Icon(
                             LucideIcons.target,
                             size: 15,
-                            color: Color(0xFF2563EB),
+                            color: theme.brightness == Brightness.dark
+                                ? colors.primaryAccent
+                                : const Color(0xFF2563EB),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -362,9 +373,13 @@ class DailySummaryCard extends StatelessWidget {
                           child: LinearProgressIndicator(
                             value: progressFraction,
                             minHeight: 7,
-                            backgroundColor: const Color(0xFFE2E8F0),
-                            valueColor: const AlwaysStoppedAnimation<Color>(
-                              Color(0xFF2563EB),
+                            backgroundColor: theme.brightness == Brightness.dark
+                                ? colors.surface
+                                : const Color(0xFFE2E8F0),
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              theme.brightness == Brightness.dark
+                                  ? colors.primaryAccent
+                                  : const Color(0xFF2563EB),
                             ),
                           ),
                         ),

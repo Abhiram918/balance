@@ -348,8 +348,10 @@ class _OverviewScreenState extends State<OverviewScreen> {
   // Top Metric Cards
   // ---------------------------------------------------------------------------
 
-  /// 1. Screen Time Card (Pale Blue)
+  /// 1. Screen Time Card (Pale Blue in light, dark surface with blue accent in dark)
   Widget _buildScreenTimeCard(BuildContext context, AppThemeColors colors, DailyUsageSummary data) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final isToday = _isSameCalendarDay(data.date, DateTime.now());
     final total = data.totalActiveTime;
     final hours = total.inHours;
@@ -364,9 +366,11 @@ class _OverviewScreenState extends State<OverviewScreen> {
       constraints: const BoxConstraints(minHeight: 125),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFEFF6FF),
+        color: isDark ? colors.surface : const Color(0xFFEFF6FF),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFDBEAFE)),
+        border: Border.all(
+          color: isDark ? colors.surfaceSecondary : const Color(0xFFDBEAFE),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -378,13 +382,15 @@ class _OverviewScreenState extends State<OverviewScreen> {
                 width: 28,
                 height: 28,
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: isDark
+                      ? colors.primaryAccent.withValues(alpha: 0.15)
+                      : Colors.white,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(
+                child: Icon(
                   LucideIcons.monitor,
                   size: 16,
-                  color: Color(0xFF2563EB),
+                  color: isDark ? colors.primaryAccent : const Color(0xFF2563EB),
                 ),
               ),
               const SizedBox(width: 8),
@@ -440,8 +446,12 @@ class _OverviewScreenState extends State<OverviewScreen> {
                     child: LinearProgressIndicator(
                       value: progressFraction,
                       minHeight: 5,
-                      backgroundColor: const Color(0xFFDBEAFE),
-                      valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF2563EB)),
+                      backgroundColor: isDark
+                          ? colors.surfaceSecondary
+                          : const Color(0xFFDBEAFE),
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        isDark ? colors.primaryAccent : const Color(0xFF2563EB),
+                      ),
                     ),
                   ),
                 ),
@@ -462,8 +472,10 @@ class _OverviewScreenState extends State<OverviewScreen> {
     );
   }
 
-  /// 2. Focus Time Card (Pale Lavender)
+  /// 2. Focus Time Card (Pale Lavender in light, dark surface with lavender accent in dark)
   Widget _buildFocusTimeCard(BuildContext context, AppThemeColors colors, DailyUsageSummary data) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final focus = data.focusTime;
     final hours = focus.inHours;
     final minutes = focus.inMinutes.remainder(60);
@@ -473,9 +485,11 @@ class _OverviewScreenState extends State<OverviewScreen> {
       constraints: const BoxConstraints(minHeight: 125),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFF5F3FF),
+        color: isDark ? colors.surface : const Color(0xFFF5F3FF),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFEDE9FE)),
+        border: Border.all(
+          color: isDark ? colors.surfaceSecondary : const Color(0xFFEDE9FE),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -487,13 +501,15 @@ class _OverviewScreenState extends State<OverviewScreen> {
                 width: 28,
                 height: 28,
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: isDark
+                      ? colors.lavenderAccent.withValues(alpha: 0.15)
+                      : Colors.white,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(
+                child: Icon(
                   LucideIcons.target,
                   size: 16,
-                  color: Color(0xFF7C3AED),
+                  color: isDark ? colors.lavenderAccent : const Color(0xFF7C3AED),
                 ),
               ),
               const SizedBox(width: 8),
@@ -531,17 +547,21 @@ class _OverviewScreenState extends State<OverviewScreen> {
     );
   }
 
-  /// 3. Breaks Card (Pale Mint)
+  /// 3. Breaks Card (Pale Mint in light, dark surface with mint accent in dark)
   Widget _buildBreaksCard(BuildContext context, AppThemeColors colors, DailyUsageSummary data) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final breaks = data.breaksTaken;
 
     return Container(
       constraints: const BoxConstraints(minHeight: 125),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFF0FDF4),
+        color: isDark ? colors.surface : const Color(0xFFF0FDF4),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFDCFCE7)),
+        border: Border.all(
+          color: isDark ? colors.surfaceSecondary : const Color(0xFFDCFCE7),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -553,13 +573,15 @@ class _OverviewScreenState extends State<OverviewScreen> {
                 width: 28,
                 height: 28,
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: isDark
+                      ? colors.greenAccent.withValues(alpha: 0.15)
+                      : Colors.white,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(
+                child: Icon(
                   LucideIcons.coffee,
                   size: 16,
-                  color: Color(0xFF059669),
+                  color: isDark ? colors.greenAccent : const Color(0xFF059669),
                 ),
               ),
               const SizedBox(width: 8),
@@ -603,6 +625,8 @@ class _OverviewScreenState extends State<OverviewScreen> {
   // Tracking Status Card
   // ---------------------------------------------------------------------------
   Widget _buildTrackingStatusCard(BuildContext context, AppThemeColors colors, tracker) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final isRunning = tracker.isRunning;
     final hasError = tracker.hasError;
 
@@ -629,8 +653,10 @@ class _OverviewScreenState extends State<OverviewScreen> {
             height: 38,
             decoration: BoxDecoration(
               color: hasError
-                  ? const Color(0xFFFEE2E2)
-                  : (isRunning ? const Color(0xFFECFDF5) : const Color(0xFFF1F5F9)),
+                  ? (isDark ? const Color(0xFFDC2626).withValues(alpha: 0.15) : const Color(0xFFFEE2E2))
+                  : (isRunning
+                      ? (isDark ? const Color(0xFF10B981).withValues(alpha: 0.15) : const Color(0xFFECFDF5))
+                      : (isDark ? colors.surfaceSecondary : const Color(0xFFF1F5F9))),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(
@@ -638,8 +664,10 @@ class _OverviewScreenState extends State<OverviewScreen> {
                   ? LucideIcons.alertTriangle
                   : (isRunning ? LucideIcons.sparkles : LucideIcons.pauseCircle),
               color: hasError
-                  ? const Color(0xFFDC2626)
-                  : (isRunning ? const Color(0xFF10B981) : colors.textSecondary),
+                  ? (isDark ? const Color(0xFFEF4444) : const Color(0xFFDC2626))
+                  : (isRunning
+                      ? (isDark ? colors.greenAccent : const Color(0xFF10B981))
+                      : colors.textSecondary),
               size: 20,
             ),
           ),
@@ -666,7 +694,9 @@ class _OverviewScreenState extends State<OverviewScreen> {
                       decoration: BoxDecoration(
                         color: hasError
                             ? const Color(0xFFDC2626)
-                            : (isRunning ? const Color(0xFF10B981) : Colors.amber.shade700),
+                            : (isRunning
+                                ? (isDark ? colors.greenAccent : const Color(0xFF10B981))
+                                : Colors.amber.shade700),
                         shape: BoxShape.circle,
                       ),
                     ),
@@ -701,10 +731,14 @@ class _OverviewScreenState extends State<OverviewScreen> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
                 decoration: BoxDecoration(
-                  color: isRunning ? const Color(0xFFF1F5F9) : const Color(0xFFEFF6FF),
+                  color: isRunning
+                      ? (isDark ? colors.surfaceSecondary : const Color(0xFFF1F5F9))
+                      : (isDark ? colors.primaryAccent.withValues(alpha: 0.15) : const Color(0xFFEFF6FF)),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: isRunning ? const Color(0xFFE2E8F0) : const Color(0xFFBFDBFE),
+                    color: isRunning
+                        ? (isDark ? colors.surfaceSecondary : const Color(0xFFE2E8F0))
+                        : (isDark ? colors.primaryAccent.withValues(alpha: 0.3) : const Color(0xFFBFDBFE)),
                   ),
                 ),
                 child: Row(
@@ -713,7 +747,9 @@ class _OverviewScreenState extends State<OverviewScreen> {
                     Icon(
                       isRunning ? LucideIcons.pause : LucideIcons.play,
                       size: 13,
-                      color: isRunning ? colors.textPrimary : const Color(0xFF2563EB),
+                      color: isRunning
+                          ? colors.textPrimary
+                          : (isDark ? colors.primaryAccent : const Color(0xFF2563EB)),
                     ),
                     const SizedBox(width: 6),
                     Text(
@@ -721,7 +757,9 @@ class _OverviewScreenState extends State<OverviewScreen> {
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color: isRunning ? colors.textPrimary : const Color(0xFF2563EB),
+                        color: isRunning
+                            ? colors.textPrimary
+                            : (isDark ? colors.primaryAccent : const Color(0xFF2563EB)),
                       ),
                     ),
                   ],
@@ -742,6 +780,9 @@ class _OverviewScreenState extends State<OverviewScreen> {
     AppThemeColors colors,
     DailyUsageSummary data,
   ) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Container(
       key: const Key('activity_timeline_card'),
       constraints: const BoxConstraints(minHeight: 290),
@@ -771,12 +812,14 @@ class _OverviewScreenState extends State<OverviewScreen> {
                       width: 38,
                       height: 38,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFEFF6FF),
+                        color: isDark
+                            ? colors.primaryAccent.withValues(alpha: 0.15)
+                            : const Color(0xFFEFF6FF),
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Icon(
+                      child: Icon(
                         LucideIcons.activity,
-                        color: Color(0xFF2563EB),
+                        color: isDark ? colors.primaryAccent : const Color(0xFF2563EB),
                         size: 20,
                       ),
                     ),
@@ -816,8 +859,8 @@ class _OverviewScreenState extends State<OverviewScreen> {
                   Container(
                     width: 8,
                     height: 8,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF2563EB),
+                    decoration: BoxDecoration(
+                      color: isDark ? colors.primaryAccent : const Color(0xFF2563EB),
                       shape: BoxShape.circle,
                     ),
                   ),
@@ -834,8 +877,8 @@ class _OverviewScreenState extends State<OverviewScreen> {
                   Container(
                     width: 8,
                     height: 8,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFCBD5E1),
+                    decoration: BoxDecoration(
+                      color: isDark ? colors.surfaceSecondary : const Color(0xFFCBD5E1),
                       shape: BoxShape.circle,
                     ),
                   ),
@@ -870,6 +913,8 @@ class _OverviewScreenState extends State<OverviewScreen> {
     AppThemeColors colors,
     DailyUsageSummary data,
   ) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final isToday = _isSameCalendarDay(data.date, DateTime.now());
     // Exclude Balance itself from user applications
     final apps = data.allApps
@@ -904,12 +949,14 @@ class _OverviewScreenState extends State<OverviewScreen> {
                       width: 38,
                       height: 38,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFEFF6FF),
+                        color: isDark
+                            ? colors.primaryAccent.withValues(alpha: 0.15)
+                            : const Color(0xFFEFF6FF),
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Icon(
+                      child: Icon(
                         LucideIcons.layoutGrid,
-                        color: Color(0xFF2563EB),
+                        color: isDark ? colors.primaryAccent : const Color(0xFF2563EB),
                         size: 20,
                       ),
                     ),
@@ -942,19 +989,19 @@ class _OverviewScreenState extends State<OverviewScreen> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Text(
+                      Text(
                         'View All',
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
-                          color: Color(0xFF2563EB),
+                          color: isDark ? colors.primaryAccent : const Color(0xFF2563EB),
                         ),
                       ),
                       const SizedBox(width: 4),
-                      const Icon(
+                      Icon(
                         LucideIcons.arrowRight,
                         size: 14,
-                        color: Color(0xFF2563EB),
+                        color: isDark ? colors.primaryAccent : const Color(0xFF2563EB),
                       ),
                     ],
                   ),
@@ -990,13 +1037,18 @@ class _OverviewScreenState extends State<OverviewScreen> {
               ),
             )
           else
-            ...apps.take(5).map((app) => _buildAppRow(context, colors, app)),
+            ...apps.take(5).map((app) => _buildAppRow(context, colors, app, isDark: isDark)),
         ],
       ),
     );
   }
 
-  Widget _buildAppRow(BuildContext context, AppThemeColors colors, AppUsageData app) {
+  Widget _buildAppRow(
+    BuildContext context,
+    AppThemeColors colors,
+    AppUsageData app, {
+    required bool isDark,
+  }) {
     final hours = app.duration.inHours;
     final minutes = app.duration.inMinutes.remainder(60);
     final timeString = hours > 0 ? '${hours}h ${minutes}m' : '${minutes}m';
@@ -1005,7 +1057,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         children: [
-          _buildAppIcon(app),
+          _buildAppIcon(app, isDark, colors),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -1027,8 +1079,12 @@ class _OverviewScreenState extends State<OverviewScreen> {
                   child: LinearProgressIndicator(
                     value: app.proportionalUsage,
                     minHeight: 5,
-                    backgroundColor: const Color(0xFFF1F5F9),
-                    valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF3B82F6)),
+                    backgroundColor: isDark
+                        ? colors.surfaceSecondary
+                        : const Color(0xFFF1F5F9),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      isDark ? colors.primaryAccent : const Color(0xFF3B82F6),
+                    ),
                   ),
                 ),
               ],
@@ -1048,7 +1104,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
     );
   }
 
-  Widget _buildAppIcon(AppUsageData app) {
+  Widget _buildAppIcon(AppUsageData app, bool isDark, AppThemeColors colors) {
     if (app.iconPath != null && app.iconPath!.isNotEmpty) {
       final file = File(app.iconPath!);
       if (file.existsSync()) {
@@ -1061,16 +1117,16 @@ class _OverviewScreenState extends State<OverviewScreen> {
               height: 32,
               fit: BoxFit.contain,
               errorBuilder: (context, error, stackTrace) =>
-                  _buildFallbackVectorIcon(app.appName),
+                  _buildFallbackVectorIcon(app.appName, isDark, colors),
             ),
           );
         } catch (_) {}
       }
     }
-    return _buildFallbackVectorIcon(app.appName);
+    return _buildFallbackVectorIcon(app.appName, isDark, colors);
   }
 
-  Widget _buildFallbackVectorIcon(String appName) {
+  Widget _buildFallbackVectorIcon(String appName, bool isDark, AppThemeColors colors) {
     final lower = appName.toLowerCase();
     IconData icon = LucideIcons.appWindow;
     Color iconColor = const Color(0xFF475569);
@@ -1078,27 +1134,30 @@ class _OverviewScreenState extends State<OverviewScreen> {
 
     if (lower.contains('edge') || lower.contains('browser')) {
       icon = LucideIcons.globe;
-      iconColor = const Color(0xFF0078D4);
-      bgColor = const Color(0xFFE0F2FE);
+      iconColor = isDark ? const Color(0xFF38BDF8) : const Color(0xFF0078D4);
+      bgColor = isDark ? const Color(0xFF0078D4).withValues(alpha: 0.18) : const Color(0xFFE0F2FE);
     } else if (lower.contains('chrome')) {
       icon = LucideIcons.globe;
-      iconColor = const Color(0xFFEA4335);
-      bgColor = const Color(0xFFFEE2E2);
+      iconColor = isDark ? const Color(0xFFF87171) : const Color(0xFFEA4335);
+      bgColor = isDark ? const Color(0xFFEA4335).withValues(alpha: 0.18) : const Color(0xFFFEE2E2);
     } else if (lower.contains('whatsapp') || lower.contains('chat') || lower.contains('telegram')) {
       icon = LucideIcons.messageCircle;
-      iconColor = const Color(0xFF10B981);
-      bgColor = const Color(0xFFDCFCE7);
+      iconColor = isDark ? const Color(0xFF34D399) : const Color(0xFF10B981);
+      bgColor = isDark ? const Color(0xFF10B981).withValues(alpha: 0.18) : const Color(0xFFDCFCE7);
     } else if (lower.contains('code') ||
         lower.contains('studio') ||
         lower.contains('antigravity') ||
         lower.contains('ide')) {
       icon = LucideIcons.sparkles;
-      iconColor = const Color(0xFF8B5CF6);
-      bgColor = const Color(0xFFEDE9FE);
+      iconColor = isDark ? const Color(0xFFA78BFA) : const Color(0xFF8B5CF6);
+      bgColor = isDark ? const Color(0xFF8B5CF6).withValues(alpha: 0.18) : const Color(0xFFEDE9FE);
     } else if (lower.contains('vlc') || lower.contains('media') || lower.contains('player')) {
       icon = LucideIcons.playCircle;
-      iconColor = const Color(0xFFEA580C);
-      bgColor = const Color(0xFFFFEDD5);
+      iconColor = isDark ? const Color(0xFFFB923C) : const Color(0xFFEA580C);
+      bgColor = isDark ? const Color(0xFFEA580C).withValues(alpha: 0.18) : const Color(0xFFFFEDD5);
+    } else {
+      iconColor = isDark ? colors.textSecondary : const Color(0xFF475569);
+      bgColor = isDark ? colors.surfaceSecondary : const Color(0xFFF1F5F9);
     }
 
     return Container(
@@ -1120,6 +1179,8 @@ class _OverviewScreenState extends State<OverviewScreen> {
     AppThemeColors colors,
     DailyUsageSummary data,
   ) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final activity = data.dailyActivity;
     final mostActiveHour = activity?.mostActiveHourText ?? 'None recorded';
     final distinctApps = activity?.distinctAppsCount ??
@@ -1159,12 +1220,14 @@ class _OverviewScreenState extends State<OverviewScreen> {
                 width: 38,
                 height: 38,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFEFF6FF),
+                  color: isDark
+                      ? colors.primaryAccent.withValues(alpha: 0.15)
+                      : const Color(0xFFEFF6FF),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(
+                child: Icon(
                   LucideIcons.trendingUp,
-                  color: Color(0xFF2563EB),
+                  color: isDark ? colors.primaryAccent : const Color(0xFF2563EB),
                   size: 20,
                 ),
               ),
@@ -1188,9 +1251,13 @@ class _OverviewScreenState extends State<OverviewScreen> {
                 child: Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFEFF6FF),
+                    color: isDark
+                        ? colors.surfaceSecondary.withValues(alpha: 0.5)
+                        : const Color(0xFFEFF6FF),
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: const Color(0xFFDBEAFE)),
+                    border: Border.all(
+                      color: isDark ? colors.surfaceSecondary : const Color(0xFFDBEAFE),
+                    ),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1204,13 +1271,15 @@ class _OverviewScreenState extends State<OverviewScreen> {
                               width: 22,
                               height: 22,
                               decoration: BoxDecoration(
-                                color: Colors.white,
+                                color: isDark
+                                    ? colors.primaryAccent.withValues(alpha: 0.15)
+                                    : Colors.white,
                                 borderRadius: BorderRadius.circular(6),
                               ),
-                              child: const Icon(
+                              child: Icon(
                                 LucideIcons.clock,
                                 size: 13,
-                                color: Color(0xFF2563EB),
+                                color: isDark ? colors.primaryAccent : const Color(0xFF2563EB),
                               ),
                             ),
                             const SizedBox(width: 6),
@@ -1246,9 +1315,13 @@ class _OverviewScreenState extends State<OverviewScreen> {
                 child: Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF0FDF4),
+                    color: isDark
+                        ? colors.surfaceSecondary.withValues(alpha: 0.5)
+                        : const Color(0xFFF0FDF4),
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: const Color(0xFFDCFCE7)),
+                    border: Border.all(
+                      color: isDark ? colors.surfaceSecondary : const Color(0xFFDCFCE7),
+                    ),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1262,13 +1335,15 @@ class _OverviewScreenState extends State<OverviewScreen> {
                               width: 22,
                               height: 22,
                               decoration: BoxDecoration(
-                                color: Colors.white,
+                                color: isDark
+                                    ? colors.greenAccent.withValues(alpha: 0.15)
+                                    : Colors.white,
                                 borderRadius: BorderRadius.circular(6),
                               ),
-                              child: const Icon(
+                              child: Icon(
                                 LucideIcons.layoutGrid,
                                 size: 13,
-                                color: Color(0xFF059669),
+                                color: isDark ? colors.greenAccent : const Color(0xFF059669),
                               ),
                             ),
                             const SizedBox(width: 6),
@@ -1322,9 +1397,13 @@ class _OverviewScreenState extends State<OverviewScreen> {
             width: double.infinity,
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: const Color(0xFFF5F3FF),
+              color: isDark
+                  ? colors.surfaceSecondary.withValues(alpha: 0.5)
+                  : const Color(0xFFF5F3FF),
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFFEDE9FE)),
+              border: Border.all(
+                color: isDark ? colors.surfaceSecondary : const Color(0xFFEDE9FE),
+              ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1338,13 +1417,15 @@ class _OverviewScreenState extends State<OverviewScreen> {
                         width: 22,
                         height: 22,
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: isDark
+                              ? colors.lavenderAccent.withValues(alpha: 0.15)
+                              : Colors.white,
                           borderRadius: BorderRadius.circular(6),
                         ),
-                        child: const Icon(
+                        child: Icon(
                           LucideIcons.timer,
                           size: 13,
-                          color: Color(0xFF7C3AED),
+                          color: isDark ? colors.lavenderAccent : const Color(0xFF7C3AED),
                         ),
                       ),
                       const SizedBox(width: 6),
