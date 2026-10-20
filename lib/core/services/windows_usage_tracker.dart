@@ -30,12 +30,25 @@ class WindowsUsageTracker extends ChangeNotifier {
   DateTime? _sessionStartTime;
   DateTime _lastActiveTime = DateTime.now();
   int? _currentSessionId;
+  DateTime? _lastCheckpointTime;
   bool _isUserIdle = false;
 
   DailyUsageSummary? _todaySummary;
 
   Duration _idleThreshold = const Duration(minutes: 2);
   final Duration _pollingInterval = const Duration(seconds: 2);
+  final Duration checkpointInterval;
+  final DateTime Function()? clock;
+
+  DateTime get _now => clock != null ? clock!() : DateTime.now();
+
+  FocusStatus? _lastFocusStatus;
+  FocusSessionType? _lastFocusSessionType;
+  DateTime? _lastFocusStartTime;
+  FocusSessionRecord? _lastCompletedSession;
+
+  List<AppSession>? _cachedCommittedSessions;
+  List<FocusSessionRecord>? _cachedCommittedFocusSessions;
 
   WindowsUsageTracker({
     required this.repository,
@@ -43,12 +56,38 @@ class WindowsUsageTracker extends ChangeNotifier {
     this.focusService,
     this.idleTimeProvider,
     this.foregroundWindowProvider,
+    this.clock,
+    this.checkpointInterval = const Duration(seconds: 15),
   }) {
+    _lastActiveTime = _now;
+    _lastFocusStatus = focusService?.status;
+    _lastFocusSessionType = focusService?.sessionType;
+    _lastFocusStartTime = focusService?.startTime;
+    _lastCompletedSession = focusService?.lastCompletedSession;
     focusService?.addListener(_onFocusServiceChanged);
   }
 
   void _onFocusServiceChanged() {
-    _refreshSummary();
+    if (focusService == null) return;
+
+    final currentStatus = focusService!.status;
+    final currentType = focusService!.sessionType;
+    final currentStartTime = focusService!.startTime;
+    final currentCompleted = focusService!.lastCompletedSession;
+
+    final hasLifecycleChanged = currentStatus != _lastFocusStatus ||
+        currentType != _lastFocusSessionType ||
+        currentStartTime != _lastFocusStartTime ||
+        currentCompleted != _lastCompletedSession;
+
+    if (hasLifecycleChanged) {
+      _lastFocusStatus = currentStatus;
+      _lastFocusSessionType = currentType;
+      _lastFocusStartTime = currentStartTime;
+      _lastCompletedSession = currentCompleted;
+      _cachedCommittedFocusSessions = null;
+      _refreshSummary();
+    }
   }
 
   bool get isRunning => _isRunning;
@@ -114,9 +153,10 @@ class WindowsUsageTracker extends ChangeNotifier {
         if (!_isUserIdle) {
           // Transitioned from active to idle.
           // Cut off session at exact time of last input, not crediting idle time.
-          final lastInputTime = DateTime.now().subtract(idleTime);
+          final lastInputTime = _now.subtract(idleTime);
           await _finalizeCurrentSession(overrideEndTime: lastInputTime);
           _isUserIdle = true;
+          _cachedCommittedSessions = null;
           await _refreshSummary();
         }
         return;
@@ -140,7 +180,7 @@ class WindowsUsageTracker extends ChangeNotifier {
       }
 
       final appName = _getAppNameFromExe(exePath);
-      final now = DateTime.now();
+      final now = _now;
 
       // Check for midnight crossing
       if (_sessionStartTime != null && _sessionStartTime!.day != now.day) {
@@ -159,6 +199,9 @@ class WindowsUsageTracker extends ChangeNotifier {
         _currentAppName = appName;
         _lastActiveTime = now;
         _currentSessionId = null;
+        _lastCheckpointTime = _sessionStartTime;
+        _cachedCommittedSessions = null;
+        _cachedCommittedFocusSessions = null;
       }
 
       if (_currentExePath != exePath) {
@@ -170,24 +213,34 @@ class WindowsUsageTracker extends ChangeNotifier {
         _sessionStartTime = now;
         _lastActiveTime = now;
         _currentSessionId = null;
+        _lastCheckpointTime = now;
+        _cachedCommittedSessions = null;
       } else {
         // Same application continuing
         _lastActiveTime = now;
 
-        // Checkpoint active session to SQLite once it exceeds 2 seconds
+        // Checkpoint active session to SQLite once it exceeds 2 seconds and checkpoint interval elapsed
         if (_sessionStartTime != null &&
             _lastActiveTime.difference(_sessionStartTime!) > const Duration(seconds: 2)) {
-          if (_currentSessionId == null) {
-            final session = AppSession(
-              appName: _currentAppName ?? 'Unknown',
-              exePath: _currentExePath!,
-              startTime: _sessionStartTime!,
-              endTime: _lastActiveTime,
-            );
-            final inserted = await repository.insertSession(session);
-            _currentSessionId = inserted.id;
-          } else {
-            await repository.updateSessionEndTime(_currentSessionId!, _lastActiveTime);
+          final timeSinceCheckpoint = _lastCheckpointTime == null
+              ? _lastActiveTime.difference(_sessionStartTime!)
+              : _lastActiveTime.difference(_lastCheckpointTime!);
+
+          if (timeSinceCheckpoint >= checkpointInterval) {
+            if (_currentSessionId == null) {
+              final session = AppSession(
+                appName: _currentAppName ?? 'Unknown',
+                exePath: _currentExePath!,
+                startTime: _sessionStartTime!,
+                endTime: _lastActiveTime,
+              );
+              final inserted = await repository.insertSession(session);
+              _currentSessionId = inserted.id;
+            } else {
+              await repository.updateSessionEndTime(_currentSessionId!, _lastActiveTime);
+            }
+            _lastCheckpointTime = _lastActiveTime;
+            _cachedCommittedSessions = null;
           }
         }
       }
