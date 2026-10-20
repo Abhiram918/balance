@@ -249,6 +249,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
   // Header Section
   // ---------------------------------------------------------------------------
   Widget _buildHeader(BuildContext context, AppThemeColors colors, DailyUsageSummary data) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final greeting = _getTimeGreeting();
     final userName = _getUserDisplayName();
 
@@ -303,7 +304,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
               color: colors.surface,
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
-                color: colors.surfaceSecondary,
+                color: isDark ? const Color(0xFF2E3445) : colors.surfaceSecondary,
               ),
               boxShadow: [
                 BoxShadow(
@@ -319,7 +320,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
                 Icon(
                   LucideIcons.calendar,
                   size: 14,
-                  color: colors.textSecondary,
+                  color: isDark ? const Color(0xFF94A3B8) : colors.textSecondary,
                 ),
                 const SizedBox(width: 8),
                 Text(
@@ -334,7 +335,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
                 Icon(
                   LucideIcons.chevronDown,
                   size: 14,
-                  color: colors.textSecondary,
+                  color: isDark ? const Color(0xFF94A3B8) : colors.textSecondary,
                 ),
               ],
             ),
@@ -653,9 +654,9 @@ class _OverviewScreenState extends State<OverviewScreen> {
             height: 38,
             decoration: BoxDecoration(
               color: hasError
-                  ? (isDark ? const Color(0xFFDC2626).withValues(alpha: 0.15) : const Color(0xFFFEE2E2))
+                  ? (isDark ? const Color(0xFFDC2626).withValues(alpha: 0.18) : const Color(0xFFFEE2E2))
                   : (isRunning
-                      ? (isDark ? const Color(0xFF10B981).withValues(alpha: 0.15) : const Color(0xFFECFDF5))
+                      ? (isDark ? const Color(0xFF10B981).withValues(alpha: 0.18) : const Color(0xFFECFDF5))
                       : (isDark ? colors.surfaceSecondary : const Color(0xFFF1F5F9))),
               borderRadius: BorderRadius.circular(10),
             ),
@@ -666,7 +667,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
               color: hasError
                   ? (isDark ? const Color(0xFFEF4444) : const Color(0xFFDC2626))
                   : (isRunning
-                      ? (isDark ? colors.greenAccent : const Color(0xFF10B981))
+                      ? (isDark ? const Color(0xFF34D399) : const Color(0xFF10B981))
                       : colors.textSecondary),
               size: 20,
             ),
@@ -695,7 +696,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
                         color: hasError
                             ? const Color(0xFFDC2626)
                             : (isRunning
-                                ? (isDark ? colors.greenAccent : const Color(0xFF10B981))
+                                ? (isDark ? const Color(0xFF34D399) : const Color(0xFF10B981))
                                 : Colors.amber.shade700),
                         shape: BoxShape.circle,
                       ),
@@ -733,12 +734,12 @@ class _OverviewScreenState extends State<OverviewScreen> {
                 decoration: BoxDecoration(
                   color: isRunning
                       ? (isDark ? colors.surfaceSecondary : const Color(0xFFF1F5F9))
-                      : (isDark ? colors.primaryAccent.withValues(alpha: 0.15) : const Color(0xFFEFF6FF)),
+                      : (isDark ? const Color(0xFF3B82F6).withValues(alpha: 0.18) : const Color(0xFFEFF6FF)),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
                     color: isRunning
                         ? (isDark ? colors.surfaceSecondary : const Color(0xFFE2E8F0))
-                        : (isDark ? colors.primaryAccent.withValues(alpha: 0.3) : const Color(0xFFBFDBFE)),
+                        : (isDark ? const Color(0xFF3B82F6).withValues(alpha: 0.35) : const Color(0xFFBFDBFE)),
                   ),
                 ),
                 child: Row(
