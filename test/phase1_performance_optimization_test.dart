@@ -171,27 +171,19 @@ class CountingAnalyticsService extends ApplicationAnalyticsService {
     }
     return ApplicationsAnalyticsResult(
       selection: selection,
-      startDate: selection.start,
-      endDate: selection.end,
-      totalTrackedDuration: const Duration(hours: 1),
-      dailyAverageDuration: const Duration(hours: 1),
-      activeDaysCount: 1,
-      totalRecordedDays: 1,
-      applications: [
+      totalUsage: const Duration(hours: 1),
+      totalLimitedApps: 0,
+      totalLimitReachedApps: 0,
+      chartBars: const [],
+      applications: const [
         AppItemAnalytics(
           appName: 'VS Code',
           exePath: r'C:\Tools\Code.exe',
-          totalDuration: const Duration(hours: 1),
-          proportionalShare: 1.0,
-          dailyAverageDuration: const Duration(hours: 1),
-          activeDaysCount: 1,
-          longestSessionDuration: const Duration(hours: 1),
-          dailyDurations: {DateTime(2026, 10, 20): const Duration(hours: 1)},
-          hourlyDurations: List.filled(24, Duration.zero),
+          totalDuration: Duration(hours: 1),
+          sessionCount: 1,
+          proportionalUsage: 1.0,
         ),
       ],
-      hourlyAggregate: List.filled(24, Duration.zero),
-      dailyAggregate: {DateTime(2026, 10, 20): const Duration(hours: 1)},
     );
   }
 }
@@ -297,8 +289,8 @@ void main() {
         id: 1,
         appName: 'Browser',
         exePath: r'C:\Apps\Browser.exe',
-        limitMinutes: 10,
-        warningPercentage: 80,
+        limitDuration: const Duration(minutes: 10),
+        warningThresholdPercentage: 80,
         isEnabled: true,
         isEnforced: true,
         createdAt: simulatedTime,
@@ -618,7 +610,7 @@ void main() {
       final dailyLimit = AppLimit(
         id: 1,
         appName: 'Discord',
-        limitMinutes: 0, // 0-minute immediate restriction
+        limitDuration: Duration.zero, // 0-minute immediate restriction
         isEnabled: true,
         isEnforced: true,
         createdAt: simulatedTime,
