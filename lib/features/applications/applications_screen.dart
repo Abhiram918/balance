@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../app/app.dart';
@@ -57,6 +58,11 @@ class _ApplicationsScreenState extends State<ApplicationsScreen> {
   bool _isInitialized = false;
   int _requestId = 0;
 
+  Timer? _debounceTimer;
+  DateTime _lastBackgroundLoadTime = DateTime.fromMillisecondsSinceEpoch(0);
+  static const Duration _backgroundThrottleDuration = Duration(seconds: 10);
+  static const Duration _notificationDebounceDuration = Duration(milliseconds: 250);
+
   @override
   void initState() {
     super.initState();
@@ -100,11 +106,13 @@ class _ApplicationsScreenState extends State<ApplicationsScreen> {
       return;
     }
 
+    _lastBackgroundLoadTime = DateTime.now();
     _loadAnalytics();
   }
 
   @override
   void dispose() {
+    _debounceTimer?.cancel();
     _tracker?.removeListener(_onTrackerOrLimitsChanged);
     _limitsService?.removeListener(_onTrackerOrLimitsChanged);
     _searchController.dispose();
@@ -113,7 +121,15 @@ class _ApplicationsScreenState extends State<ApplicationsScreen> {
 
   void _onTrackerOrLimitsChanged() {
     if (!mounted) return;
-    _loadAnalytics(isBackground: true);
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(_notificationDebounceDuration, () {
+      if (!mounted) return;
+      final now = DateTime.now();
+      if (now.difference(_lastBackgroundLoadTime) >= _backgroundThrottleDuration) {
+        _lastBackgroundLoadTime = now;
+        _loadAnalytics(isBackground: true);
+      }
+    });
   }
 
   Future<void> _loadAnalytics({bool isBackground = false}) async {
@@ -155,6 +171,8 @@ class _ApplicationsScreenState extends State<ApplicationsScreen> {
     setState(() {
       _selection = newSelection;
     });
+    _debounceTimer?.cancel();
+    _lastBackgroundLoadTime = DateTime.now();
     _loadAnalytics();
   }
 
@@ -932,6 +950,8 @@ class _ApplicationsScreenState extends State<ApplicationsScreen> {
       preselectedAppName: app.appName,
       preselectedExePath: app.exePath,
     );
+    _debounceTimer?.cancel();
+    _lastBackgroundLoadTime = DateTime.now();
     _loadAnalytics(isBackground: true);
   }
 

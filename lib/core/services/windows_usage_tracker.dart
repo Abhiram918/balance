@@ -466,4 +466,5 @@ class WindowsUsageTracker extends ChangeNotifier {
   /// Visible for deterministic testing without waiting for periodic timers.
   @visibleForTesting
   Future<void> checkForegroundWindow() => _checkForegroundWindow();
+}
 

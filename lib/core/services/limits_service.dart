@@ -28,6 +28,9 @@ class LimitsService extends ChangeNotifier {
   String? _errorMessage;
   bool _isDisposed = false;
 
+  String? _cachedDateKey;
+  final Set<String> _sentNotificationCache = {};
+
   /// Stream of application block events forwarded from [AppEnforcementService].
   Stream<AppBlockEvent> get blockEvents =>
       enforcementService?.blockEvents ?? const Stream.empty();
@@ -250,6 +253,7 @@ class LimitsService extends ChangeNotifier {
       enforcementService?.removeRestriction(updated.appName);
     }
 
+    _sentNotificationCache.removeWhere((k) => k.startsWith('$id:'));
     await repository.updateLimit(updated);
     _limits = await repository.getAllLimits();
     await evaluateUsage();
@@ -270,6 +274,7 @@ class LimitsService extends ChangeNotifier {
       enforcementService?.removeRestriction(updated.appName);
     }
 
+    _sentNotificationCache.removeWhere((k) => k.startsWith('$id:'));
     await repository.updateLimit(updated);
     _limits = await repository.getAllLimits();
     await evaluateUsage();
@@ -282,6 +287,7 @@ class LimitsService extends ChangeNotifier {
     if (limit != null) {
       enforcementService?.removeRestriction(limit.appName);
     }
+    _sentNotificationCache.removeWhere((k) => k.startsWith('$id:'));
     await repository.deleteLimit(id);
     _limits = List<AppLimit>.from(await repository.getAllLimits());
     notifyListeners();
@@ -292,6 +298,10 @@ class LimitsService extends ChangeNotifier {
   Future<void> evaluateUsage({DailyUsageSummary? summary}) async {
     final now = _clock();
     final dateKey = DateFormat('yyyy-MM-dd').format(now);
+    if (_cachedDateKey != dateKey) {
+      _cachedDateKey = dateKey;
+      _sentNotificationCache.clear();
+    }
 
     DailyUsageSummary activeSummary;
     if (summary != null) {
@@ -316,16 +326,22 @@ class LimitsService extends ChangeNotifier {
       if (limit.id == null) continue;
       final used = getUsageForApp(limit.appName, exePath: limit.exePath);
 
+      final warningCacheKey = '${limit.id!}:warning:$dateKey';
+      final exceededCacheKey = '${limit.id!}:exceeded:$dateKey';
+
       // 1. Warning Threshold Notification
       if (limit.limitDuration > Duration.zero &&
           used >= limit.warningDuration &&
           used < limit.limitDuration) {
-        final alreadySent = await repository.hasLimitNotificationBeenSent(
-          limit.id!,
-          'warning',
-          dateKey,
-        );
-        if (!alreadySent) {
+        final alreadySent = _sentNotificationCache.contains(warningCacheKey) ||
+            await repository.hasLimitNotificationBeenSent(
+              limit.id!,
+              'warning',
+              dateKey,
+            );
+        if (alreadySent) {
+          _sentNotificationCache.add(warningCacheKey);
+        } else {
           final sent = await notificationService?.notifyAppLimitWarning(
                 appName: limit.appName,
                 used: used,
@@ -334,6 +350,7 @@ class LimitsService extends ChangeNotifier {
               ) ??
               false;
           if (sent) {
+            _sentNotificationCache.add(warningCacheKey);
             await repository.recordLimitNotificationSent(
               limit.id!,
               'warning',
@@ -346,12 +363,15 @@ class LimitsService extends ChangeNotifier {
 
       // 2. Limit Reached Notification & Enforcement
       if (used >= limit.limitDuration) {
-        final alreadySent = await repository.hasLimitNotificationBeenSent(
-          limit.id!,
-          'exceeded',
-          dateKey,
-        );
-        if (!alreadySent) {
+        final alreadySent = _sentNotificationCache.contains(exceededCacheKey) ||
+            await repository.hasLimitNotificationBeenSent(
+              limit.id!,
+              'exceeded',
+              dateKey,
+            );
+        if (alreadySent) {
+          _sentNotificationCache.add(exceededCacheKey);
+        } else {
           final sent = await notificationService?.notifyAppLimitReached(
                 appName: limit.appName,
                 used: used,
@@ -359,6 +379,7 @@ class LimitsService extends ChangeNotifier {
               ) ??
               false;
           if (sent) {
+            _sentNotificationCache.add(exceededCacheKey);
             await repository.recordLimitNotificationSent(
               limit.id!,
               'exceeded',
