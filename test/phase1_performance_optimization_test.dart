@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:balance/app/app.dart';
+import 'package:balance/app/theme/app_colors.dart';
 import 'package:balance/core/models/app_block_event.dart';
 import 'package:balance/core/models/app_limit.dart';
 import 'package:balance/core/models/app_session.dart';
@@ -263,8 +264,9 @@ void main() {
 
       await focusService.start();
 
-      // Advance clock by 12 minutes
+      // Advance clock by 12 minutes and tick
       simulatedTime = simulatedTime.add(const Duration(minutes: 12));
+      focusService.tick();
 
       // Query daily summary for today
       final summary = await tracker.getSummaryForDay(DateTime(2026, 10, 20));
@@ -282,6 +284,7 @@ void main() {
       final processManager = FakeProcessManager();
       final enforcement = AppEnforcementService(
         processManager: processManager,
+        gracePeriod: Duration.zero,
         clock: () => simulatedTime,
       );
 
@@ -335,6 +338,7 @@ void main() {
         reason: 'Enforcement must trigger promptly based on live in-memory session',
       );
 
+      await Future.delayed(Duration.zero);
       tracker.dispose();
       limitsService.dispose();
       enforcement.dispose();
@@ -356,12 +360,23 @@ void main() {
       );
       await limitsService.init();
 
+      final testTheme = ThemeData.dark().copyWith(
+        extensions: [AppThemeColors.dark],
+      );
+
       await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: ApplicationsScreen(
-              analyticsService: countingAnalytics,
-              referenceDate: DateTime(2026, 10, 20),
+        TrackerProvider(
+          tracker: tracker,
+          child: LimitsProvider(
+            limitsService: limitsService,
+            child: MaterialApp(
+              theme: testTheme,
+              home: Scaffold(
+                body: ApplicationsScreen(
+                  analyticsService: countingAnalytics,
+                  referenceDate: DateTime(2026, 10, 20),
+                ),
+              ),
             ),
           ),
         ),
@@ -397,12 +412,36 @@ void main() {
         artificialDelay: const Duration(milliseconds: 100),
       );
 
+      final tracker = WindowsUsageTracker(
+        repository: repository,
+        idleTimeProvider: () => Duration.zero,
+        foregroundWindowProvider: () => r'C:\Tools\Code.exe',
+      );
+      await tracker.init();
+
+      final limitsService = LimitsService(
+        repository: repository,
+        tracker: tracker,
+      );
+      await limitsService.init();
+
+      final testTheme = ThemeData.dark().copyWith(
+        extensions: [AppThemeColors.dark],
+      );
+
       await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: ApplicationsScreen(
-              analyticsService: countingAnalytics,
-              referenceDate: DateTime(2026, 10, 20),
+        TrackerProvider(
+          tracker: tracker,
+          child: LimitsProvider(
+            limitsService: limitsService,
+            child: MaterialApp(
+              theme: testTheme,
+              home: Scaffold(
+                body: ApplicationsScreen(
+                  analyticsService: countingAnalytics,
+                  referenceDate: DateTime(2026, 10, 20),
+                ),
+              ),
             ),
           ),
         ),
@@ -413,6 +452,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('VS Code'), findsWidgets);
+
+      tracker.dispose();
+      limitsService.dispose();
     });
 
     // 6. Active-session checkpoint writes are throttled to the intended interval
