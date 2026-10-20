@@ -134,6 +134,11 @@ void main() {
       expect(find.text('Daily Activity'), findsOneWidget);
 
       // Verify no top card has light pastel background Color(0xFFEFF6FF), Color(0xFFF5F3FF), or Color(0xFFF0FDF4)
+      bool foundDarkBlueCard = false;
+      bool foundDarkLavenderCard = false;
+      bool foundDarkMintCard = false;
+      bool foundDarkGoalBox = false;
+
       final containers = tester.widgetList<Container>(find.byType(Container));
       for (final container in containers) {
         final decoration = container.decoration;
@@ -148,8 +153,19 @@ void main() {
               reason: 'Found light mint 0xFFF0FDF4 card in dark mode');
           expect(color != const Color(0xFFF8FAFC), isTrue,
               reason: 'Found light 0xFFF8FAFC goal box in dark mode');
+
+          if (color == AppColors.darkBlueSurface) foundDarkBlueCard = true;
+          if (color == AppColors.darkLavenderSurface) foundDarkLavenderCard = true;
+          if (color == AppColors.darkGreenSurface) foundDarkMintCard = true;
+          if (color == const Color(0xFF1B2436)) foundDarkGoalBox = true;
         }
       }
+
+      // Verify restored dark-mode subtle tinted card backgrounds
+      expect(foundDarkBlueCard, isTrue, reason: 'Expected Screen Time subtle blue-tinted dark surface in dark mode');
+      expect(foundDarkLavenderCard, isTrue, reason: 'Expected Focus Time subtle lavender-tinted dark surface in dark mode');
+      expect(foundDarkMintCard, isTrue, reason: 'Expected Breaks subtle green-tinted dark surface in dark mode');
+      expect(foundDarkGoalBox, isTrue, reason: 'Expected Daily Goal subtle blue-tinted dark surface in dark mode');
 
       // Verify Screen Time text is rendered with darkTextPrimary
       final screenTimeText = tester.widget<Text>(find.text('Screen Time'));
