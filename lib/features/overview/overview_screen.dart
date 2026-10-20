@@ -814,13 +814,13 @@ class _OverviewScreenState extends State<OverviewScreen> {
                       height: 38,
                       decoration: BoxDecoration(
                         color: isDark
-                            ? colors.primaryAccent.withValues(alpha: 0.15)
+                            ? const Color(0xFF3B82F6).withValues(alpha: 0.18)
                             : const Color(0xFFEFF6FF),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Icon(
                         LucideIcons.activity,
-                        color: isDark ? colors.primaryAccent : const Color(0xFF2563EB),
+                        color: isDark ? const Color(0xFF60A5FA) : const Color(0xFF2563EB),
                         size: 20,
                       ),
                     ),
@@ -861,7 +861,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
                     width: 8,
                     height: 8,
                     decoration: BoxDecoration(
-                      color: isDark ? colors.primaryAccent : const Color(0xFF2563EB),
+                      color: isDark ? const Color(0xFF3B82F6) : const Color(0xFF2563EB),
                       shape: BoxShape.circle,
                     ),
                   ),
@@ -879,7 +879,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
                     width: 8,
                     height: 8,
                     decoration: BoxDecoration(
-                      color: isDark ? colors.surfaceSecondary : const Color(0xFFCBD5E1),
+                      color: isDark ? const Color(0xFF2E384D) : const Color(0xFFCBD5E1),
                       shape: BoxShape.circle,
                     ),
                   ),
@@ -951,13 +951,13 @@ class _OverviewScreenState extends State<OverviewScreen> {
                       height: 38,
                       decoration: BoxDecoration(
                         color: isDark
-                            ? colors.primaryAccent.withValues(alpha: 0.15)
+                            ? const Color(0xFF3B82F6).withValues(alpha: 0.18)
                             : const Color(0xFFEFF6FF),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Icon(
                         LucideIcons.layoutGrid,
-                        color: isDark ? colors.primaryAccent : const Color(0xFF2563EB),
+                        color: isDark ? const Color(0xFF60A5FA) : const Color(0xFF2563EB),
                         size: 20,
                       ),
                     ),
@@ -995,14 +995,14 @@ class _OverviewScreenState extends State<OverviewScreen> {
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
-                          color: isDark ? colors.primaryAccent : const Color(0xFF2563EB),
+                          color: isDark ? const Color(0xFF60A5FA) : const Color(0xFF2563EB),
                         ),
                       ),
                       const SizedBox(width: 4),
                       Icon(
                         LucideIcons.arrowRight,
                         size: 14,
-                        color: isDark ? colors.primaryAccent : const Color(0xFF2563EB),
+                        color: isDark ? const Color(0xFF60A5FA) : const Color(0xFF2563EB),
                       ),
                     ],
                   ),
@@ -1081,10 +1081,10 @@ class _OverviewScreenState extends State<OverviewScreen> {
                     value: app.proportionalUsage,
                     minHeight: 5,
                     backgroundColor: isDark
-                        ? colors.surfaceSecondary
+                        ? const Color(0xFF1B2436)
                         : const Color(0xFFF1F5F9),
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      isDark ? colors.primaryAccent : const Color(0xFF3B82F6),
+                    valueColor: const AlwaysStoppedAnimation<Color>(
+                      Color(0xFF3B82F6),
                     ),
                   ),
                 ),
@@ -1136,29 +1136,29 @@ class _OverviewScreenState extends State<OverviewScreen> {
     if (lower.contains('edge') || lower.contains('browser')) {
       icon = LucideIcons.globe;
       iconColor = isDark ? const Color(0xFF38BDF8) : const Color(0xFF0078D4);
-      bgColor = isDark ? const Color(0xFF0078D4).withValues(alpha: 0.18) : const Color(0xFFE0F2FE);
+      bgColor = isDark ? const Color(0xFF0078D4).withValues(alpha: 0.22) : const Color(0xFFE0F2FE);
     } else if (lower.contains('chrome')) {
       icon = LucideIcons.globe;
       iconColor = isDark ? const Color(0xFFF87171) : const Color(0xFFEA4335);
-      bgColor = isDark ? const Color(0xFFEA4335).withValues(alpha: 0.18) : const Color(0xFFFEE2E2);
+      bgColor = isDark ? const Color(0xFFEA4335).withValues(alpha: 0.22) : const Color(0xFFFEE2E2);
     } else if (lower.contains('whatsapp') || lower.contains('chat') || lower.contains('telegram')) {
       icon = LucideIcons.messageCircle;
       iconColor = isDark ? const Color(0xFF34D399) : const Color(0xFF10B981);
-      bgColor = isDark ? const Color(0xFF10B981).withValues(alpha: 0.18) : const Color(0xFFDCFCE7);
+      bgColor = isDark ? const Color(0xFF10B981).withValues(alpha: 0.22) : const Color(0xFFDCFCE7);
     } else if (lower.contains('code') ||
         lower.contains('studio') ||
         lower.contains('antigravity') ||
         lower.contains('ide')) {
       icon = LucideIcons.sparkles;
       iconColor = isDark ? const Color(0xFFA78BFA) : const Color(0xFF8B5CF6);
-      bgColor = isDark ? const Color(0xFF8B5CF6).withValues(alpha: 0.18) : const Color(0xFFEDE9FE);
+      bgColor = isDark ? const Color(0xFF8B5CF6).withValues(alpha: 0.22) : const Color(0xFFEDE9FE);
     } else if (lower.contains('vlc') || lower.contains('media') || lower.contains('player')) {
       icon = LucideIcons.playCircle;
       iconColor = isDark ? const Color(0xFFFB923C) : const Color(0xFFEA580C);
-      bgColor = isDark ? const Color(0xFFEA580C).withValues(alpha: 0.18) : const Color(0xFFFFEDD5);
+      bgColor = isDark ? const Color(0xFFEA580C).withValues(alpha: 0.22) : const Color(0xFFFFEDD5);
     } else {
-      iconColor = isDark ? colors.textSecondary : const Color(0xFF475569);
-      bgColor = isDark ? colors.surfaceSecondary : const Color(0xFFF1F5F9);
+      iconColor = isDark ? const Color(0xFF94A3B8) : const Color(0xFF475569);
+      bgColor = isDark ? const Color(0xFF2A2E3B) : const Color(0xFFF1F5F9);
     }
 
     return Container(
@@ -1222,13 +1222,13 @@ class _OverviewScreenState extends State<OverviewScreen> {
                 height: 38,
                 decoration: BoxDecoration(
                   color: isDark
-                      ? colors.primaryAccent.withValues(alpha: 0.15)
+                      ? const Color(0xFF3B82F6).withValues(alpha: 0.18)
                       : const Color(0xFFEFF6FF),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(
                   LucideIcons.trendingUp,
-                  color: isDark ? colors.primaryAccent : const Color(0xFF2563EB),
+                  color: isDark ? const Color(0xFF60A5FA) : const Color(0xFF2563EB),
                   size: 20,
                 ),
               ),
@@ -1247,17 +1247,17 @@ class _OverviewScreenState extends State<OverviewScreen> {
           // Row 1: Two small tiles
           Row(
             children: [
-              // Most active hour
+              // Most active hour (subtle blue-tinted dark surface in dark mode)
               Expanded(
                 child: Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: isDark
-                        ? colors.surfaceSecondary.withValues(alpha: 0.5)
+                        ? const Color(0xFF1B2436)
                         : const Color(0xFFEFF6FF),
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
-                      color: isDark ? colors.surfaceSecondary : const Color(0xFFDBEAFE),
+                      color: isDark ? const Color(0xFF3B82F6).withValues(alpha: 0.25) : const Color(0xFFDBEAFE),
                     ),
                   ),
                   child: Column(
@@ -1273,14 +1273,14 @@ class _OverviewScreenState extends State<OverviewScreen> {
                               height: 22,
                               decoration: BoxDecoration(
                                 color: isDark
-                                    ? colors.primaryAccent.withValues(alpha: 0.15)
+                                    ? const Color(0xFF3B82F6).withValues(alpha: 0.22)
                                     : Colors.white,
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Icon(
                                 LucideIcons.clock,
                                 size: 13,
-                                color: isDark ? colors.primaryAccent : const Color(0xFF2563EB),
+                                color: isDark ? const Color(0xFF60A5FA) : const Color(0xFF2563EB),
                               ),
                             ),
                             const SizedBox(width: 6),
@@ -1311,17 +1311,17 @@ class _OverviewScreenState extends State<OverviewScreen> {
                 ),
               ),
               const SizedBox(width: 12),
-              // Applications used
+              // Applications used (subtle green-tinted dark surface in dark mode)
               Expanded(
                 child: Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: isDark
-                        ? colors.surfaceSecondary.withValues(alpha: 0.5)
+                        ? const Color(0xFF192B22)
                         : const Color(0xFFF0FDF4),
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
-                      color: isDark ? colors.surfaceSecondary : const Color(0xFFDCFCE7),
+                      color: isDark ? const Color(0xFF10B981).withValues(alpha: 0.25) : const Color(0xFFDCFCE7),
                     ),
                   ),
                   child: Column(
@@ -1337,14 +1337,14 @@ class _OverviewScreenState extends State<OverviewScreen> {
                               height: 22,
                               decoration: BoxDecoration(
                                 color: isDark
-                                    ? colors.greenAccent.withValues(alpha: 0.15)
+                                    ? const Color(0xFF10B981).withValues(alpha: 0.22)
                                     : Colors.white,
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Icon(
                                 LucideIcons.layoutGrid,
                                 size: 13,
-                                color: isDark ? colors.greenAccent : const Color(0xFF059669),
+                                color: isDark ? const Color(0xFF34D399) : const Color(0xFF059669),
                               ),
                             ),
                             const SizedBox(width: 6),
@@ -1393,17 +1393,17 @@ class _OverviewScreenState extends State<OverviewScreen> {
             ],
           ),
           const SizedBox(height: 12),
-          // Row 2: One wide tile for Longest active session
+          // Row 2: One wide tile for Longest active session (subtle purple-tinted dark surface in dark mode)
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: isDark
-                  ? colors.surfaceSecondary.withValues(alpha: 0.5)
+                  ? const Color(0xFF251F33)
                   : const Color(0xFFF5F3FF),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: isDark ? colors.surfaceSecondary : const Color(0xFFEDE9FE),
+                color: isDark ? const Color(0xFFA855F7).withValues(alpha: 0.25) : const Color(0xFFEDE9FE),
               ),
             ),
             child: Column(
@@ -1419,14 +1419,14 @@ class _OverviewScreenState extends State<OverviewScreen> {
                         height: 22,
                         decoration: BoxDecoration(
                           color: isDark
-                              ? colors.lavenderAccent.withValues(alpha: 0.15)
+                              ? const Color(0xFFA855F7).withValues(alpha: 0.22)
                               : Colors.white,
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Icon(
                           LucideIcons.timer,
                           size: 13,
-                          color: isDark ? colors.lavenderAccent : const Color(0xFF7C3AED),
+                          color: isDark ? const Color(0xFFC084FC) : const Color(0xFF7C3AED),
                         ),
                       ),
                       const SizedBox(width: 6),

@@ -78,13 +78,13 @@ class DailySummaryCard extends StatelessWidget {
                 height: 38,
                 decoration: BoxDecoration(
                   color: isDark
-                      ? colors.primaryAccent.withValues(alpha: 0.15)
+                      ? const Color(0xFF3B82F6).withValues(alpha: 0.18)
                       : const Color(0xFFEFF6FF),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(
                   LucideIcons.barChart2,
-                  color: isDark ? colors.primaryAccent : const Color(0xFF2563EB),
+                  color: isDark ? const Color(0xFF60A5FA) : const Color(0xFF2563EB),
                   size: 20,
                 ),
               ),
@@ -128,7 +128,7 @@ class DailySummaryCard extends StatelessWidget {
               color: colors.surface,
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
-                color: colors.surfaceSecondary,
+                color: isDark ? const Color(0xFF2E3445) : colors.surfaceSecondary,
               ),
             ),
             child: Row(
@@ -146,7 +146,7 @@ class DailySummaryCard extends StatelessWidget {
                 Icon(
                   LucideIcons.chevronDown,
                   size: 15,
-                  color: colors.textSecondary,
+                  color: isDark ? const Color(0xFF94A3B8) : colors.textSecondary,
                 ),
               ],
             ),
@@ -159,6 +159,7 @@ class DailySummaryCard extends StatelessWidget {
   /// Body containing: Donut Chart, Legend, Vertical Divider, and Goal Progress Box
   Widget _buildBody(BuildContext context, AppThemeColors colors) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final breakdown = data.timeBreakdown;
 
     final focusSec = breakdown?.focusDuration.inSeconds ?? data.focusTime.inSeconds;
@@ -311,19 +312,19 @@ class DailySummaryCard extends StatelessWidget {
           ),
           const SizedBox(width: AppSpacing.lg),
 
-          // 4. Daily Goal Box
+          // 4. Daily Goal Box (subtle blue-tinted dark surface in dark mode)
           Expanded(
             flex: 4,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               decoration: BoxDecoration(
-                color: theme.brightness == Brightness.dark
-                    ? colors.surfaceSecondary.withValues(alpha: 0.5)
+                color: isDark
+                    ? const Color(0xFF1B2436)
                     : const Color(0xFFF8FAFC),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: theme.brightness == Brightness.dark
-                      ? colors.surfaceSecondary
+                  color: isDark
+                      ? const Color(0xFF3B82F6).withValues(alpha: 0.25)
                       : colors.surfaceSecondary.withValues(alpha: 0.5),
                 ),
               ),
@@ -340,16 +341,16 @@ class DailySummaryCard extends StatelessWidget {
                           width: 28,
                           height: 28,
                           decoration: BoxDecoration(
-                            color: theme.brightness == Brightness.dark
-                                ? colors.primaryAccent.withValues(alpha: 0.15)
+                            color: isDark
+                                ? const Color(0xFF3B82F6).withValues(alpha: 0.2)
                                 : const Color(0xFFEFF6FF),
                             shape: BoxShape.circle,
                           ),
                           child: Icon(
                             LucideIcons.target,
                             size: 15,
-                            color: theme.brightness == Brightness.dark
-                                ? colors.primaryAccent
+                            color: isDark
+                                ? const Color(0xFF60A5FA)
                                 : const Color(0xFF2563EB),
                           ),
                         ),
@@ -373,12 +374,12 @@ class DailySummaryCard extends StatelessWidget {
                           child: LinearProgressIndicator(
                             value: progressFraction,
                             minHeight: 7,
-                            backgroundColor: theme.brightness == Brightness.dark
-                                ? colors.surface
+                            backgroundColor: isDark
+                                ? const Color(0xFF151C2C)
                                 : const Color(0xFFE2E8F0),
                             valueColor: AlwaysStoppedAnimation<Color>(
-                              theme.brightness == Brightness.dark
-                                  ? colors.primaryAccent
+                              isDark
+                                  ? const Color(0xFF3B82F6)
                                   : const Color(0xFF2563EB),
                             ),
                           ),
@@ -390,7 +391,9 @@ class DailySummaryCard extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
-                          color: colors.textSecondary,
+                          color: isDark
+                              ? const Color(0xFF60A5FA)
+                              : colors.textSecondary,
                         ),
                       ),
                     ],

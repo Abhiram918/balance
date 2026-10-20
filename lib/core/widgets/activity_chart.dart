@@ -37,9 +37,9 @@ class ActivityChart extends StatelessWidget {
 
       // Color selection matching reference image and responding to dark theme
       final Color barColor = isActive
-          ? (isDark ? colors.primaryAccent : const Color(0xFF2563EB))
+          ? (isDark ? const Color(0xFF3B82F6) : const Color(0xFF2563EB))
           : (isPastOrCurrent
-              ? (isDark ? colors.surfaceSecondary : const Color(0xFF93C5FD))
+              ? (isDark ? const Color(0xFF2E384D) : const Color(0xFF93C5FD))
               : Colors.transparent);
 
       // Bar height: if active, actual value (at least 0.04 so very short sessions are visible);
@@ -74,9 +74,12 @@ class ActivityChart extends StatelessWidget {
               barTouchData: BarTouchData(
                 enabled: true,
                 touchTooltipData: BarTouchTooltipData(
-                  getTooltipColor: (group) => colors.surfaceSecondary,
+                  getTooltipColor: (group) =>
+                      isDark ? const Color(0xFF1E222D) : colors.surfaceSecondary,
                   tooltipBorder: BorderSide(
-                    color: colors.surfaceSecondary,
+                    color: isDark
+                        ? const Color(0xFF3B82F6).withValues(alpha: 0.3)
+                        : colors.surfaceSecondary,
                     width: 1,
                   ),
                   tooltipPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -109,7 +112,9 @@ class ActivityChart extends StatelessWidget {
                         TextSpan(
                           text: statusText,
                           style: TextStyle(
-                            color: minutes > 0 ? colors.primaryAccent : colors.textSecondary,
+                            color: minutes > 0
+                                ? (isDark ? const Color(0xFF60A5FA) : colors.primaryAccent)
+                                : colors.textSecondary,
                             fontWeight: FontWeight.w600,
                             fontSize: 12,
                           ),
@@ -188,7 +193,7 @@ class ActivityChart extends StatelessWidget {
                 horizontalInterval: 0.5,
                 getDrawingHorizontalLine: (value) => FlLine(
                   color: isDark
-                      ? colors.surfaceSecondary.withValues(alpha: 0.8)
+                      ? const Color(0xFF2A3142)
                       : colors.textSecondary.withValues(alpha: 0.08),
                   strokeWidth: 1,
                   dashArray: [4, 4],
@@ -216,6 +221,7 @@ class ActivityChart extends StatelessWidget {
 
   Widget _buildLegend(BuildContext context, AppThemeColors colors) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -233,7 +239,7 @@ class ActivityChart extends StatelessWidget {
               width: 8,
               height: 8,
               decoration: BoxDecoration(
-                color: colors.primaryAccent,
+                color: isDark ? const Color(0xFF3B82F6) : colors.primaryAccent,
                 shape: BoxShape.circle,
               ),
             ),
@@ -250,7 +256,7 @@ class ActivityChart extends StatelessWidget {
               width: 8,
               height: 8,
               decoration: BoxDecoration(
-                color: colors.surfaceSecondary,
+                color: isDark ? const Color(0xFF2E384D) : colors.surfaceSecondary,
                 shape: BoxShape.circle,
               ),
             ),
