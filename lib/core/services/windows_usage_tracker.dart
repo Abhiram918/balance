@@ -135,11 +135,11 @@ class WindowsUsageTracker extends ChangeNotifier {
   }
 
   Future<void> stop() async {
-    if (!_isRunning) return;
+    if (!_isRunning && _sessionStartTime == null) return;
     _isRunning = false;
     _timer?.cancel();
     _timer = null;
-    await _finalizeCurrentSession();
+    await _finalizeCurrentSession(overrideEndTime: _now);
     await _refreshSummary();
     notifyListeners();
   }
@@ -206,7 +206,7 @@ class WindowsUsageTracker extends ChangeNotifier {
 
       if (_currentExePath != exePath) {
         // Application switched
-        await _finalizeCurrentSession();
+        await _finalizeCurrentSession(overrideEndTime: now);
 
         _currentExePath = exePath;
         _currentAppName = appName;

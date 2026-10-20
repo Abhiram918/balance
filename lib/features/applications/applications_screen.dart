@@ -24,12 +24,18 @@ class ApplicationsScreen extends StatefulWidget {
   final ApplicationAnalyticsService? analyticsService;
   final DateTime? referenceDate;
   final String? initialSelectedAppName;
+  final DateTime Function()? clock;
+  final Duration backgroundThrottleDuration;
+  final Duration debounceDuration;
 
   const ApplicationsScreen({
     super.key,
     this.analyticsService,
     this.referenceDate,
     this.initialSelectedAppName,
+    this.clock,
+    this.backgroundThrottleDuration = const Duration(seconds: 10),
+    this.debounceDuration = const Duration(milliseconds: 250),
   });
 
   @override
@@ -60,8 +66,8 @@ class _ApplicationsScreenState extends State<ApplicationsScreen> {
 
   Timer? _debounceTimer;
   DateTime _lastBackgroundLoadTime = DateTime.fromMillisecondsSinceEpoch(0);
-  static const Duration _backgroundThrottleDuration = Duration(seconds: 10);
-  static const Duration _notificationDebounceDuration = Duration(milliseconds: 250);
+
+  DateTime get _now => widget.clock != null ? widget.clock!() : DateTime.now();
 
   @override
   void initState() {
@@ -106,7 +112,7 @@ class _ApplicationsScreenState extends State<ApplicationsScreen> {
       return;
     }
 
-    _lastBackgroundLoadTime = DateTime.now();
+    _lastBackgroundLoadTime = _now;
     _loadAnalytics();
   }
 
@@ -122,10 +128,10 @@ class _ApplicationsScreenState extends State<ApplicationsScreen> {
   void _onTrackerOrLimitsChanged() {
     if (!mounted) return;
     _debounceTimer?.cancel();
-    _debounceTimer = Timer(_notificationDebounceDuration, () {
+    _debounceTimer = Timer(widget.debounceDuration, () {
       if (!mounted) return;
-      final now = DateTime.now();
-      if (now.difference(_lastBackgroundLoadTime) >= _backgroundThrottleDuration) {
+      final now = _now;
+      if (now.difference(_lastBackgroundLoadTime) >= widget.backgroundThrottleDuration) {
         _lastBackgroundLoadTime = now;
         _loadAnalytics(isBackground: true);
       }

@@ -4,13 +4,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:balance/app/app.dart';
 import 'package:balance/app/theme/app_colors.dart';
-import 'package:balance/core/models/app_block_event.dart';
 import 'package:balance/core/models/app_limit.dart';
 import 'package:balance/core/models/app_session.dart';
 import 'package:balance/core/models/application_analytics_models.dart';
 import 'package:balance/core/models/focus_preset.dart';
 import 'package:balance/core/models/focus_session.dart';
-import 'package:balance/core/models/usage_data.dart';
 import 'package:balance/core/services/app_enforcement_service.dart';
 import 'package:balance/core/services/application_analytics_service.dart';
 import 'package:balance/core/services/focus_service.dart';
@@ -189,6 +187,24 @@ class CountingAnalyticsService extends ApplicationAnalyticsService {
   }
 }
 
+class ControllableAnalyticsService extends ApplicationAnalyticsService {
+  final Map<int, Completer<ApplicationsAnalyticsResult>> completers = {};
+  int callCount = 0;
+
+  ControllableAnalyticsService({required super.repository});
+
+  @override
+  Future<ApplicationsAnalyticsResult> getApplicationsAnalytics({
+    required DateRangeSelection selection,
+    DateTime? referenceDate,
+  }) {
+    callCount++;
+    final completer = Completer<ApplicationsAnalyticsResult>();
+    completers[callCount] = completer;
+    return completer.future;
+  }
+}
+
 void main() {
   setUpAll(() {
     sqfliteFfiInit();
@@ -346,19 +362,22 @@ void main() {
 
     // 4. Applications analytics does not perform duplicate identical loads for one notification cascade
     testWidgets('4. Applications analytics deduplicates cascade from tracker and limitsService', (tester) async {
+      tester.view.physicalSize = const Size(1400, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
       final countingAnalytics = CountingAnalyticsService(repository: repository);
       final tracker = WindowsUsageTracker(
         repository: repository,
         idleTimeProvider: () => Duration.zero,
         foregroundWindowProvider: () => r'C:\Tools\Code.exe',
       );
-      await tracker.init();
+      // NOTE: Do NOT call tracker.init() here so periodic background polling timer doesn't run during widget test.
 
       final limitsService = LimitsService(
         repository: repository,
         tracker: tracker,
       );
-      await limitsService.init();
 
       final testTheme = ThemeData.dark().copyWith(
         extensions: [AppThemeColors.dark],
@@ -375,6 +394,8 @@ void main() {
                 body: ApplicationsScreen(
                   analyticsService: countingAnalytics,
                   referenceDate: DateTime(2026, 10, 20),
+                  debounceDuration: const Duration(milliseconds: 50),
+                  backgroundThrottleDuration: Duration.zero,
                 ),
               ),
             ),
@@ -390,8 +411,8 @@ void main() {
       tracker.notifyListeners();
       limitsService.notifyListeners();
 
-      // Advance pump by 300ms to allow 250ms debounce to fire
-      await tester.pump(const Duration(milliseconds: 300));
+      // Advance by 60ms to let the 50ms debounce timer fire
+      await tester.pump(const Duration(milliseconds: 60));
       await tester.pumpAndSettle();
 
       // Should have performed exactly ONE additional load, not two
@@ -407,23 +428,21 @@ void main() {
 
     // 5. Newer analytics requests cannot be overwritten by stale asynchronous results
     testWidgets('5. Newer analytics requests cannot be overwritten by stale asynchronous results', (tester) async {
-      final countingAnalytics = CountingAnalyticsService(
-        repository: repository,
-        artificialDelay: const Duration(milliseconds: 100),
-      );
+      tester.view.physicalSize = const Size(1400, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
 
+      final controllableAnalytics = ControllableAnalyticsService(repository: repository);
       final tracker = WindowsUsageTracker(
         repository: repository,
         idleTimeProvider: () => Duration.zero,
         foregroundWindowProvider: () => r'C:\Tools\Code.exe',
       );
-      await tracker.init();
 
       final limitsService = LimitsService(
         repository: repository,
         tracker: tracker,
       );
-      await limitsService.init();
 
       final testTheme = ThemeData.dark().copyWith(
         extensions: [AppThemeColors.dark],
@@ -438,8 +457,9 @@ void main() {
               theme: testTheme,
               home: Scaffold(
                 body: ApplicationsScreen(
-                  analyticsService: countingAnalytics,
+                  analyticsService: controllableAnalytics,
                   referenceDate: DateTime(2026, 10, 20),
+                  debounceDuration: const Duration(milliseconds: 50),
                 ),
               ),
             ),
@@ -447,11 +467,88 @@ void main() {
         ),
       );
 
+      // Frame 1: initial load starts (request 1)
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 150));
+      expect(controllableAnalytics.callCount, equals(1));
+
+      // Complete request 1 with initial app
+      controllableAnalytics.completers[1]!.complete(
+        ApplicationsAnalyticsResult(
+          selection: DateRangeSelection.today(),
+          totalUsage: const Duration(hours: 1),
+          totalLimitedApps: 0,
+          totalLimitReachedApps: 0,
+          chartBars: const [],
+          applications: const [
+            AppItemAnalytics(
+              appName: 'InitialApp',
+              exePath: r'C:\Apps\Initial.exe',
+              totalDuration: Duration(hours: 1),
+              sessionCount: 1,
+              proportionalUsage: 1.0,
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('InitialApp'), findsWidgets);
+
+      // User changes date selection to 'Past 7 Days' (request 2)
+      await tester.tap(find.text('Past 7 Days'));
+      await tester.pump();
+      expect(controllableAnalytics.callCount, equals(2));
+
+      // Immediately, user changes date selection to 'Past 30 Days' (request 3)
+      await tester.tap(find.text('Past 30 Days'));
+      await tester.pump();
+      expect(controllableAnalytics.callCount, equals(3));
+
+      // Complete request 3 (newer request) FIRST
+      controllableAnalytics.completers[3]!.complete(
+        ApplicationsAnalyticsResult(
+          selection: DateRangeSelection.past30Days(),
+          totalUsage: const Duration(hours: 3),
+          totalLimitedApps: 0,
+          totalLimitReachedApps: 0,
+          chartBars: const [],
+          applications: const [
+            AppItemAnalytics(
+              appName: 'NewerApp30Days',
+              exePath: r'C:\Apps\Newer.exe',
+              totalDuration: Duration(hours: 3),
+              sessionCount: 1,
+              proportionalUsage: 1.0,
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('NewerApp30Days'), findsWidgets);
+
+      // Complete request 2 (stale request) LATER
+      controllableAnalytics.completers[2]!.complete(
+        ApplicationsAnalyticsResult(
+          selection: DateRangeSelection.past7Days(),
+          totalUsage: const Duration(hours: 2),
+          totalLimitedApps: 0,
+          totalLimitReachedApps: 0,
+          chartBars: const [],
+          applications: const [
+            AppItemAnalytics(
+              appName: 'StaleApp7Days',
+              exePath: r'C:\Apps\Stale.exe',
+              totalDuration: Duration(hours: 2),
+              sessionCount: 1,
+              proportionalUsage: 1.0,
+            ),
+          ],
+        ),
+      );
       await tester.pumpAndSettle();
 
-      expect(find.text('VS Code'), findsWidgets);
+      // NewerApp30Days must STILL be displayed, StaleApp7Days must NOT overwrite it!
+      expect(find.text('NewerApp30Days'), findsWidgets);
+      expect(find.text('StaleApp7Days'), findsNothing);
 
       tracker.dispose();
       limitsService.dispose();
