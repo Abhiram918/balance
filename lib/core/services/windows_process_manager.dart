@@ -22,6 +22,33 @@ class RunningProcessInfo {
       'RunningProcessInfo(pid: $pid, exeName: $exeName, windows: ${windowHandles.length})';
 }
 
+/// Target application criteria used for batch process matching.
+@immutable
+class TargetAppCriteria {
+  final String appName;
+  final String? exePath;
+
+  const TargetAppCriteria({
+    required this.appName,
+    this.exePath,
+  });
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TargetAppCriteria &&
+          runtimeType == other.runtimeType &&
+          appName.trim().toLowerCase() == other.appName.trim().toLowerCase() &&
+          (exePath?.trim().toLowerCase() ?? '') == (other.exePath?.trim().toLowerCase() ?? '');
+
+  @override
+  int get hashCode =>
+      appName.trim().toLowerCase().hashCode ^ (exePath?.trim().toLowerCase() ?? '').hashCode;
+
+  @override
+  String toString() => 'TargetAppCriteria(appName: $appName, exePath: $exePath)';
+}
+
 /// Abstract contract for Windows process discovery, graceful closing, and termination.
 /// Allows unit and widget tests to inject mock process operations without touching real OS processes.
 abstract class ProcessManager {
@@ -33,6 +60,21 @@ abstract class ProcessManager {
     required String appName,
     String? exePath,
   });
+
+  /// Finds running processes for multiple target applications using a shared process enumeration.
+  /// Returns a map associating each target criteria with its matching running processes.
+  Future<Map<TargetAppCriteria, List<RunningProcessInfo>>> findProcessesForApps(
+    List<TargetAppCriteria> targets,
+  ) async {
+    final result = <TargetAppCriteria, List<RunningProcessInfo>>{};
+    for (final target in targets) {
+      result[target] = await findProcessesForApp(
+        appName: target.appName,
+        exePath: target.exePath,
+      );
+    }
+    return result;
+  }
 
   /// Sends a graceful close signal (e.g. WM_CLOSE) to the target application's windows.
   Future<bool> closeProcessGracefully(RunningProcessInfo process);
@@ -46,6 +88,24 @@ abstract class ProcessManager {
 
 /// Production implementation of [ProcessManager] leveraging Win32 FFI APIs.
 class WindowsProcessManager implements ProcessManager {
+  final Map<int, List<HWND>> Function(int selfPid)? pidWindowsProvider;
+  final List<int> Function()? processListProvider;
+  final String Function(int pid)? processPathProvider;
+  final int Function()? currentPidProvider;
+  final bool Function(RunningProcessInfo proc)? closeProcessProvider;
+  final bool Function(int pid)? isRunningProvider;
+  final bool Function(int pid)? terminateProvider;
+
+  WindowsProcessManager({
+    this.pidWindowsProvider,
+    this.processListProvider,
+    this.processPathProvider,
+    this.currentPidProvider,
+    this.closeProcessProvider,
+    this.isRunningProvider,
+    this.terminateProvider,
+  });
+
   static const Set<String> _protectedProcessNames = {
     'explorer.exe',
     'dwm.exe',
@@ -72,6 +132,9 @@ class WindowsProcessManager implements ProcessManager {
 
   @override
   int getCurrentProcessId() {
+    if (currentPidProvider != null) {
+      return currentPidProvider!();
+    }
     try {
       return GetCurrentProcessId();
     } catch (_) {
@@ -80,17 +143,55 @@ class WindowsProcessManager implements ProcessManager {
   }
 
   @override
-  Future<List<RunningProcessInfo>> findProcessesForApp({
-    required String appName,
-    String? exePath,
-  }) async {
-    final selfPid = getCurrentProcessId();
-    final matchingProcesses = <int, RunningProcessInfo>{};
+  Future<Map<TargetAppCriteria, List<RunningProcessInfo>>> findProcessesForApps(
+    List<TargetAppCriteria> targets,
+  ) async {
+    final result = <TargetAppCriteria, List<RunningProcessInfo>>{
+      for (final target in targets) target: <RunningProcessInfo>[],
+    };
+    if (targets.isEmpty) return result;
 
-    // 1. Gather all top-level window handles mapped by PID via EnumWindows
+    final selfPid = getCurrentProcessId();
+
+    // 1. Gather all top-level window handles mapped by PID via EnumWindows (once for batch)
     final pidWindows = _collectPidWindows(selfPid);
 
-    // 2. Enumerate system processes via EnumProcesses
+    // 2. Enumerate system processes (using injected provider or EnumProcesses)
+    if (processListProvider != null) {
+      final pids = processListProvider!();
+      for (final pid in pids) {
+        if (pid <= 4 || pid == selfPid) continue;
+
+        final procExePath = _queryProcessExePath(pid);
+        if (procExePath.isEmpty) continue;
+
+        final procExeName = procExePath.split(r'\').last;
+        if (_isProtectedProcess(procExeName, procExePath, selfPid, pid)) {
+          continue;
+        }
+
+        RunningProcessInfo? procInfo;
+
+        for (final target in targets) {
+          if (_matchesApp(
+            candidateExePath: procExePath,
+            candidateExeName: procExeName,
+            targetAppName: target.appName,
+            targetExePath: target.exePath,
+          )) {
+            procInfo ??= RunningProcessInfo(
+              pid: pid,
+              exePath: procExePath,
+              exeName: procExeName,
+              windowHandles: pidWindows[pid] ?? const [],
+            );
+            result[target]!.add(procInfo);
+          }
+        }
+      }
+      return result;
+    }
+
     final pids = calloc<DWORD>(2048);
     final bytesNeeded = calloc<DWORD>();
 
@@ -110,30 +211,44 @@ class WindowsProcessManager implements ProcessManager {
             continue;
           }
 
-          if (_matchesApp(
-            candidateExePath: procExePath,
-            candidateExeName: procExeName,
-            targetAppName: appName,
-            targetExePath: exePath,
-          )) {
-            final windows = pidWindows[pid] ?? [];
-            matchingProcesses[pid] = RunningProcessInfo(
-              pid: pid,
-              exePath: procExePath,
-              exeName: procExeName,
-              windowHandles: windows,
-            );
+          RunningProcessInfo? procInfo;
+
+          for (final target in targets) {
+            if (_matchesApp(
+              candidateExePath: procExePath,
+              candidateExeName: procExeName,
+              targetAppName: target.appName,
+              targetExePath: target.exePath,
+            )) {
+              procInfo ??= RunningProcessInfo(
+                pid: pid,
+                exePath: procExePath,
+                exeName: procExeName,
+                windowHandles: pidWindows[pid] ?? const [],
+              );
+              result[target]!.add(procInfo);
+            }
           }
         }
       }
     } catch (e) {
-      debugPrint('Error enumerating processes: $e');
+      debugPrint('Error enumerating processes in batch: $e');
     } finally {
       free(pids);
       free(bytesNeeded);
     }
 
-    return matchingProcesses.values.toList();
+    return result;
+  }
+
+  @override
+  Future<List<RunningProcessInfo>> findProcessesForApp({
+    required String appName,
+    String? exePath,
+  }) async {
+    final target = TargetAppCriteria(appName: appName, exePath: exePath);
+    final batch = await findProcessesForApps([target]);
+    return batch[target] ?? [];
   }
 
   @override
@@ -141,6 +256,10 @@ class WindowsProcessManager implements ProcessManager {
     if (_isProtectedProcess(process.exeName, process.exePath, getCurrentProcessId(), process.pid)) {
       debugPrint('Attempted to close protected process: ${process.exeName} (PID ${process.pid})');
       return false;
+    }
+
+    if (closeProcessProvider != null) {
+      return closeProcessProvider!(process);
     }
 
     bool sentAny = false;
@@ -161,6 +280,10 @@ class WindowsProcessManager implements ProcessManager {
   @override
   Future<bool> isProcessRunning(int pid) async {
     if (pid <= 4) return false;
+
+    if (isRunningProvider != null) {
+      return isRunningProvider!(pid);
+    }
 
     final hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
     if (hProcess.value.address == 0) {
@@ -194,6 +317,10 @@ class WindowsProcessManager implements ProcessManager {
       return false;
     }
 
+    if (terminateProvider != null) {
+      return terminateProvider!(pid);
+    }
+
     final hProcess = OpenProcess(PROCESS_TERMINATE, false, pid);
     if (hProcess.value.address == 0) {
       debugPrint('Unable to open process $pid for termination (access denied or already closed)');
@@ -212,8 +339,13 @@ class WindowsProcessManager implements ProcessManager {
   }
 
   Map<int, List<HWND>> _collectPidWindows(int selfPid) {
+    if (pidWindowsProvider != null) {
+      return pidWindowsProvider!(selfPid);
+    }
+
     final map = <int, List<HWND>>{};
     final pidPointer = calloc<DWORD>();
+    NativeCallable<WNDENUMPROC>? callable;
 
     int enumCallback(Pointer<NativeType> hwndPtr, int lParam) {
       final hwnd = HWND(hwndPtr);
@@ -226,15 +358,15 @@ class WindowsProcessManager implements ProcessManager {
     }
 
     try {
-      final callable = NativeCallable<WNDENUMPROC>.isolateLocal(
+      callable = NativeCallable<WNDENUMPROC>.isolateLocal(
         enumCallback,
         exceptionalReturn: 0,
       );
       EnumWindows(callable.nativeFunction, LPARAM(0));
-      callable.close();
     } catch (e) {
       debugPrint('EnumWindows failed: $e');
     } finally {
+      callable?.close();
       free(pidPointer);
     }
 
@@ -242,6 +374,10 @@ class WindowsProcessManager implements ProcessManager {
   }
 
   String _queryProcessExePath(int pid) {
+    if (processPathProvider != null) {
+      return processPathProvider!(pid);
+    }
+
     final hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
     if (hProcess.value.address == 0) return '';
 

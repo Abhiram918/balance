@@ -225,16 +225,55 @@ class AppEnforcementService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Discovers and closes running instances of all currently active focus-blocked apps.
+  /// Discovers and closes running instances of all currently active focus-blocked apps
+  /// using a shared batch process enumeration to minimize OS scanning overhead.
   Future<void> enforceAllFocusApps() async {
-    if (!_isFocusEnforcing) return;
+    if (!_isFocusEnforcing || _focusBlockedApps.isEmpty) return;
     final targets = List<FocusPresetBlockedApp>.of(_focusBlockedApps);
-    for (final app in targets) {
-      if (!_isFocusEnforcing) break;
-      await _closeProcessesForApp(
-        appName: app.appName,
-        exePath: app.exePath,
-      );
+
+    final criteriaList = targets
+        .map((app) => TargetAppCriteria(appName: app.appName, exePath: app.exePath))
+        .toList();
+
+    final batchMatches = await processManager.findProcessesForApps(criteriaList);
+    if (!_isFocusEnforcing) return;
+
+    // Collect all discovered processes across targets, deduplicated by PID
+    final allProcesses = <int, RunningProcessInfo>{};
+    for (final processes in batchMatches.values) {
+      for (final proc in processes) {
+        allProcesses[proc.pid] = proc;
+      }
+    }
+
+    if (allProcesses.isEmpty) return;
+
+    // 1. Attempt graceful close on all discovered processes concurrently
+    for (final process in allProcesses.values) {
+      try {
+        await processManager.closeProcessGracefully(process);
+      } catch (e) {
+        debugPrint('Graceful close error for ${process.exeName}: $e');
+      }
+    }
+
+    // 2. Wait for the grace period once across the entire batch
+    if (gracePeriod > Duration.zero) {
+      await Future.delayed(gracePeriod);
+    }
+
+    if (!_isFocusEnforcing) return;
+
+    // 3. Fall back to terminating any processes that remain alive
+    for (final pid in allProcesses.keys) {
+      try {
+        final isRunning = await processManager.isProcessRunning(pid);
+        if (isRunning) {
+          await processManager.terminateProcess(pid);
+        }
+      } catch (e) {
+        debugPrint('Termination error for PID $pid: $e');
+      }
     }
   }
 

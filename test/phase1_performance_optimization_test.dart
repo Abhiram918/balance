@@ -138,6 +138,20 @@ class FakeProcessManager implements ProcessManager {
   }
 
   @override
+  Future<Map<TargetAppCriteria, List<RunningProcessInfo>>> findProcessesForApps(
+    List<TargetAppCriteria> targets,
+  ) async {
+    final result = <TargetAppCriteria, List<RunningProcessInfo>>{};
+    for (final target in targets) {
+      result[target] = await findProcessesForApp(
+        appName: target.appName,
+        exePath: target.exePath,
+      );
+    }
+    return result;
+  }
+
+  @override
   Future<bool> closeProcessGracefully(RunningProcessInfo process) async => true;
 
   @override

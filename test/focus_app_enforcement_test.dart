@@ -65,6 +65,20 @@ class FakeProcessManager implements ProcessManager {
     return results;
   }
 
+  @override
+  Future<Map<TargetAppCriteria, List<RunningProcessInfo>>> findProcessesForApps(
+    List<TargetAppCriteria> targets,
+  ) async {
+    final result = <TargetAppCriteria, List<RunningProcessInfo>>{};
+    for (final target in targets) {
+      result[target] = await findProcessesForApp(
+        appName: target.appName,
+        exePath: target.exePath,
+      );
+    }
+    return result;
+  }
+
   bool _matches(MockProcess p, String appName, String? exePath) {
     if (exePath != null && exePath.trim().isNotEmpty) {
       if (p.exePath.toLowerCase() == exePath.trim().toLowerCase()) return true;
