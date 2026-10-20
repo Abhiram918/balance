@@ -322,6 +322,8 @@ class WindowsUsageTracker extends ChangeNotifier {
     _currentAppName = null;
     _sessionStartTime = null;
     _currentSessionId = null;
+    _lastCheckpointTime = null;
+    _cachedCommittedSessions = null;
   }
 
   Duration _getIdleTime() {
@@ -373,10 +375,18 @@ class WindowsUsageTracker extends ChangeNotifier {
   /// If [date] is today, incorporates any active in-progress app session and active focus session.
   /// If [date] is historical, queries recorded sessions and focus sessions from the database.
   Future<DailyUsageSummary> getSummaryForDay(DateTime date) async {
-    final now = DateTime.now();
+    final now = _now;
     final isToday = date.year == now.year && date.month == now.month && date.day == now.day;
 
-    final sessions = await repository.getSessionsForDay(date);
+    List<AppSession> sessions;
+    if (isToday && _cachedCommittedSessions != null) {
+      sessions = List<AppSession>.from(_cachedCommittedSessions!);
+    } else {
+      sessions = await repository.getSessionsForDay(date);
+      if (isToday) {
+        _cachedCommittedSessions = List<AppSession>.from(sessions);
+      }
+    }
 
     // If an in-progress session exists and querying today, combine it safely without duplicate counting
     if (isToday && _currentExePath != null && _sessionStartTime != null) {
@@ -403,7 +413,15 @@ class WindowsUsageTracker extends ChangeNotifier {
     }
 
     // Retrieve recorded focus & break sessions for the requested day
-    final focusSessions = await repository.getFocusSessionsForDay(date);
+    List<FocusSessionRecord> focusSessions;
+    if (isToday && _cachedCommittedFocusSessions != null) {
+      focusSessions = _cachedCommittedFocusSessions!;
+    } else {
+      focusSessions = await repository.getFocusSessionsForDay(date);
+      if (isToday) {
+        _cachedCommittedFocusSessions = focusSessions;
+      }
+    }
 
     // Extract active focus/break session state if running or paused (only applies to today)
     ActiveFocusState? activeFocus;
@@ -441,8 +459,11 @@ class WindowsUsageTracker extends ChangeNotifier {
   }
 
   Future<void> _refreshSummary() async {
-    _todaySummary = await getSummaryForDay(DateTime.now());
+    _todaySummary = await getSummaryForDay(_now);
     notifyListeners();
   }
-}
+
+  /// Visible for deterministic testing without waiting for periodic timers.
+  @visibleForTesting
+  Future<void> checkForegroundWindow() => _checkForegroundWindow();
 
