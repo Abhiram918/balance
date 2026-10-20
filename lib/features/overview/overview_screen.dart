@@ -348,7 +348,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
   // Top Metric Cards
   // ---------------------------------------------------------------------------
 
-  /// 1. Screen Time Card (Pale Blue in light, dark surface with blue accent in dark)
+  /// 1. Screen Time Card (Pale Blue in light, subtle blue-tinted dark surface in dark)
   Widget _buildScreenTimeCard(BuildContext context, AppThemeColors colors, DailyUsageSummary data) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -366,10 +366,10 @@ class _OverviewScreenState extends State<OverviewScreen> {
       constraints: const BoxConstraints(minHeight: 125),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? colors.surface : const Color(0xFFEFF6FF),
+        color: isDark ? colors.cardBlue : const Color(0xFFEFF6FF),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: isDark ? colors.surfaceSecondary : const Color(0xFFDBEAFE),
+          color: isDark ? const Color(0xFF3B82F6).withValues(alpha: 0.3) : const Color(0xFFDBEAFE),
         ),
       ),
       child: Column(
@@ -383,14 +383,14 @@ class _OverviewScreenState extends State<OverviewScreen> {
                 height: 28,
                 decoration: BoxDecoration(
                   color: isDark
-                      ? colors.primaryAccent.withValues(alpha: 0.15)
+                      ? const Color(0xFF3B82F6).withValues(alpha: 0.22)
                       : Colors.white,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(
                   LucideIcons.monitor,
                   size: 16,
-                  color: isDark ? colors.primaryAccent : const Color(0xFF2563EB),
+                  color: isDark ? const Color(0xFF60A5FA) : const Color(0xFF2563EB),
                 ),
               ),
               const SizedBox(width: 8),
@@ -447,10 +447,10 @@ class _OverviewScreenState extends State<OverviewScreen> {
                       value: progressFraction,
                       minHeight: 5,
                       backgroundColor: isDark
-                          ? colors.surfaceSecondary
+                          ? const Color(0xFF1B2538)
                           : const Color(0xFFDBEAFE),
                       valueColor: AlwaysStoppedAnimation<Color>(
-                        isDark ? colors.primaryAccent : const Color(0xFF2563EB),
+                        isDark ? const Color(0xFF3B82F6) : const Color(0xFF2563EB),
                       ),
                     ),
                   ),
@@ -472,7 +472,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
     );
   }
 
-  /// 2. Focus Time Card (Pale Lavender in light, dark surface with lavender accent in dark)
+  /// 2. Focus Time Card (Pale Lavender in light, subtle violet-tinted dark surface in dark)
   Widget _buildFocusTimeCard(BuildContext context, AppThemeColors colors, DailyUsageSummary data) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -485,10 +485,10 @@ class _OverviewScreenState extends State<OverviewScreen> {
       constraints: const BoxConstraints(minHeight: 125),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? colors.surface : const Color(0xFFF5F3FF),
+        color: isDark ? colors.cardLavender : const Color(0xFFF5F3FF),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: isDark ? colors.surfaceSecondary : const Color(0xFFEDE9FE),
+          color: isDark ? const Color(0xFFA855F7).withValues(alpha: 0.3) : const Color(0xFFEDE9FE),
         ),
       ),
       child: Column(
@@ -502,14 +502,14 @@ class _OverviewScreenState extends State<OverviewScreen> {
                 height: 28,
                 decoration: BoxDecoration(
                   color: isDark
-                      ? colors.lavenderAccent.withValues(alpha: 0.15)
+                      ? const Color(0xFFA855F7).withValues(alpha: 0.22)
                       : Colors.white,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(
                   LucideIcons.target,
                   size: 16,
-                  color: isDark ? colors.lavenderAccent : const Color(0xFF7C3AED),
+                  color: isDark ? const Color(0xFFC084FC) : const Color(0xFF7C3AED),
                 ),
               ),
               const SizedBox(width: 8),
@@ -547,7 +547,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
     );
   }
 
-  /// 3. Breaks Card (Pale Mint in light, dark surface with mint accent in dark)
+  /// 3. Breaks Card (Pale Mint in light, subtle green-tinted dark surface in dark)
   Widget _buildBreaksCard(BuildContext context, AppThemeColors colors, DailyUsageSummary data) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -557,10 +557,10 @@ class _OverviewScreenState extends State<OverviewScreen> {
       constraints: const BoxConstraints(minHeight: 125),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? colors.surface : const Color(0xFFF0FDF4),
+        color: isDark ? colors.cardMint : const Color(0xFFF0FDF4),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: isDark ? colors.surfaceSecondary : const Color(0xFFDCFCE7),
+          color: isDark ? const Color(0xFF10B981).withValues(alpha: 0.3) : const Color(0xFFDCFCE7),
         ),
       ),
       child: Column(
@@ -574,14 +574,14 @@ class _OverviewScreenState extends State<OverviewScreen> {
                 height: 28,
                 decoration: BoxDecoration(
                   color: isDark
-                      ? colors.greenAccent.withValues(alpha: 0.15)
+                      ? const Color(0xFF10B981).withValues(alpha: 0.22)
                       : Colors.white,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(
                   LucideIcons.coffee,
                   size: 16,
-                  color: isDark ? colors.greenAccent : const Color(0xFF059669),
+                  color: isDark ? const Color(0xFF34D399) : const Color(0xFF059669),
                 ),
               ),
               const SizedBox(width: 8),
