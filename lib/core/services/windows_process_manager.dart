@@ -340,7 +340,12 @@ class WindowsProcessManager implements ProcessManager {
 
   Map<int, List<HWND>> _collectPidWindows(int selfPid) {
     if (pidWindowsProvider != null) {
-      return pidWindowsProvider!(selfPid);
+      try {
+        return pidWindowsProvider!(selfPid);
+      } catch (e) {
+        debugPrint('pidWindowsProvider failed: $e');
+        return {};
+      }
     }
 
     final map = <int, List<HWND>>{};

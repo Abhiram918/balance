@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:balance/core/models/app_block_event.dart';
@@ -172,6 +171,21 @@ class FakeUsageRepository extends UsageRepository {
 
   @override
   Future<List<AppLimit>> getAllLimits() async => List.unmodifiable(storedLimits);
+
+  ActiveFocusState? storedActiveState;
+
+  @override
+  Future<ActiveFocusState?> getActiveFocusState() async => storedActiveState;
+
+  @override
+  Future<void> saveActiveFocusState(ActiveFocusState state) async {
+    storedActiveState = state;
+  }
+
+  @override
+  Future<void> clearActiveFocusState() async {
+    storedActiveState = null;
+  }
 }
 
 void main() {
@@ -394,11 +408,14 @@ void main() {
       expect(enforcement.isFocusRestricted('Steam'), isTrue);
       expect(enforcement.isDailyLimitRestricted('Discord'), isTrue);
 
-      // Transition to break
-      focusService.skipToBreak();
+      // Stop focus session and start a break session
+      await focusService.stop();
+      await focusService.setSessionType(FocusSessionType.breakSession);
+      await focusService.start();
       expect(focusService.sessionType, equals(FocusSessionType.breakSession));
+      expect(focusService.isRunning, isTrue);
 
-      // Steam is exempt during break
+      // Steam is exempt during break because unblockDuringBreaks is true
       expect(enforcement.isFocusRestricted('Steam'), isFalse);
 
       // Discord (daily limit) REMAINS strictly restricted!
@@ -431,6 +448,8 @@ void main() {
         id: 1,
         name: 'Study',
         focusDuration: const Duration(minutes: 25),
+        shortBreakDuration: const Duration(minutes: 5),
+        longBreakDuration: const Duration(minutes: 15),
         blockedApps: const [FocusPresetBlockedApp(id: 1, presetId: 1, appName: 'Game')],
       );
       await focusService.selectPreset(preset);
@@ -502,6 +521,9 @@ void main() {
         limits: const [],
         todayUsage: Duration.zero,
       );
+
+      // Yield event loop to allow broadcast stream delivery
+      await Future.delayed(Duration.zero);
 
       // Must be intercepted, closed, and block event dispatched
       expect(fakeManager.gracefulCloseAttempts, contains(402));
