@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:balance/app/app.dart';
 import 'package:balance/app/theme/app_colors.dart';
+import 'package:balance/core/models/analytics_data.dart';
 import 'package:balance/core/models/app_limit.dart';
 import 'package:balance/core/models/app_session.dart';
 import 'package:balance/core/models/application_analytics_models.dart';
@@ -24,6 +25,25 @@ import 'package:balance/features/applications/applications_screen.dart';
 import 'package:balance/features/focus/focus_screen.dart';
 import 'package:balance/features/insights/insights_screen.dart';
 import 'package:balance/features/overview/overview_screen.dart';
+
+class TestableWindowsUsageTracker extends WindowsUsageTracker {
+  DailyUsageSummary? _customSummary;
+
+  TestableWindowsUsageTracker({
+    required super.repository,
+    super.idleTimeProvider,
+    super.foregroundWindowProvider,
+    super.clock,
+    super.checkpointInterval,
+  });
+
+  void setTodaySummaryForTesting(DailyUsageSummary summary) {
+    _customSummary = summary;
+  }
+
+  @override
+  DailyUsageSummary? get todaySummary => _customSummary ?? super.todaySummary;
+}
 
 class Phase3TestRepository extends UsageRepository {
   final List<AppSession> storedSessions = [];
@@ -278,6 +298,7 @@ void main() {
     // 1. Hiding the window does not stop foreground usage tracking
     test('1. Hiding the window does not stop foreground usage tracking', () async {
       DateTime simulatedTime = DateTime(2026, 10, 21, 10, 0, 0);
+      String? currentForeground = r'C:\Tools\Editor.exe';
 
       final trayService = WindowsTrayService(isPlatformSupported: false);
       await trayService.init();
@@ -286,7 +307,7 @@ void main() {
         repository: repository,
         clock: () => simulatedTime,
         idleTimeProvider: () => Duration.zero,
-        foregroundWindowProvider: () => r'C:\Tools\Editor.exe',
+        foregroundWindowProvider: () => currentForeground,
         checkpointInterval: const Duration(seconds: 15),
       );
       await tracker.init();
@@ -314,7 +335,7 @@ void main() {
 
       // Switch application while still hidden in tray
       simulatedTime = simulatedTime.add(const Duration(seconds: 2));
-      tracker.setForegroundWindowProviderForTesting(() => r'C:\Apps\Browser.exe');
+      currentForeground = r'C:\Apps\Browser.exe';
       await tracker.checkForegroundWindow();
 
       // Previous session must be flushed on app switch while hidden
@@ -493,7 +514,7 @@ void main() {
       final countingAnalytics = CountingApplicationsAnalyticsService(repository: repository);
       final countingInsights = CountingInsightsAnalyticsService(repository: repository);
 
-      final tracker = WindowsUsageTracker(
+      final tracker = TestableWindowsUsageTracker(
         repository: repository,
         idleTimeProvider: () => Duration.zero,
         foregroundWindowProvider: () => r'C:\Tools\Code.exe',
@@ -530,14 +551,20 @@ void main() {
       await tester.pump();
 
       // Update tracker live summary while hidden
+      final codeUsage = AppUsageData(
+        appName: 'Code',
+        duration: const Duration(hours: 2, minutes: 15),
+        proportionalUsage: 1.0,
+      );
       tracker.setTodaySummaryForTesting(DailyUsageSummary(
         date: DateTime.now(),
         totalActiveTime: const Duration(hours: 2, minutes: 15),
         focusTime: const Duration(minutes: 30),
         breaksTaken: 2,
         goalTime: const Duration(hours: 8),
-        allApps: const [AppUsageData(appName: 'Code', duration: Duration(hours: 2, minutes: 15), proportionalUsage: 1.0)],
-        hourlyActivity: const {},
+        mostUsedApps: [codeUsage],
+        allApps: [codeUsage],
+        hourlyActivity: const [],
       ));
 
       // Tracker notifies while hidden
