@@ -167,6 +167,8 @@ class _ApplicationDetailScreenState extends State<ApplicationDetailScreen> {
     }
   }
 
+  DateTime get _now => widget.clock != null ? widget.clock!() : DateTime.now();
+
   Future<void> _loadAnalytics({bool isBackground = false}) async {
     if (_resolvedService == null) return;
     final currentReq = ++_requestId;
@@ -179,10 +181,15 @@ class _ApplicationDetailScreenState extends State<ApplicationDetailScreen> {
     }
 
     try {
+      final activeSelection = widget.referenceDate != null
+          ? _selection
+          : _selection.reanchored(_now);
+      _selection = activeSelection;
+
       final result = await _resolvedService!.getSingleAppAnalytics(
         appName: widget.appName,
         exePath: widget.exePath,
-        selection: _selection,
+        selection: activeSelection,
         referenceDate: widget.referenceDate,
       );
 

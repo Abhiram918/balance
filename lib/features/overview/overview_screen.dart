@@ -30,6 +30,7 @@ class OverviewScreen extends StatefulWidget {
 
 class _OverviewScreenState extends State<OverviewScreen> {
   late DateTime _selectedDate;
+  bool _isAutoTrackingToday = true;
   DailyUsageSummary? _historicalSummary;
 
   WindowsUsageTracker? _tracker;
@@ -124,6 +125,11 @@ class _OverviewScreenState extends State<OverviewScreen> {
   }
 
   bool get _isToday {
+    if (_isAutoTrackingToday) {
+      final now = DateTime.now();
+      _selectedDate = DateTime(now.year, now.month, now.day);
+      return true;
+    }
     final now = DateTime.now();
     return _isSameCalendarDay(_selectedDate, now);
   }
@@ -155,13 +161,14 @@ class _OverviewScreenState extends State<OverviewScreen> {
 
   Future<void> _selectDate(DateTime newDate) async {
     final norm = DateTime(newDate.year, newDate.month, newDate.day);
-    if (_isSameCalendarDay(_selectedDate, norm)) return;
+    if (!_isAutoTrackingToday && _isSameCalendarDay(_selectedDate, norm)) return;
 
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
 
     if (_isSameCalendarDay(norm, today)) {
       setState(() {
+        _isAutoTrackingToday = true;
         _selectedDate = today;
         _historicalSummary = null;
       });
@@ -169,6 +176,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
     }
 
     setState(() {
+      _isAutoTrackingToday = false;
       _selectedDate = norm;
       _historicalSummary = null;
     });

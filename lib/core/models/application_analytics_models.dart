@@ -104,6 +104,22 @@ class DateRangeSelection {
     );
   }
 
+  /// Returns a new [DateRangeSelection] re-anchored to [now] if this selection
+  /// uses a relative preset (Today, Past 7 Days, Past 30 Days).
+  DateRangeSelection reanchored(DateTime now) {
+    switch (preset) {
+      case DateFilterPreset.today:
+        return DateRangeSelection.today(now);
+      case DateFilterPreset.past7Days:
+        return DateRangeSelection.past7Days(now);
+      case DateFilterPreset.past30Days:
+        return DateRangeSelection.past30Days(now);
+      case DateFilterPreset.customDate:
+      case DateFilterPreset.customRange:
+        return this;
+    }
+  }
+
   /// The exclusive end timestamp of the range (start of the day following endDate).
   DateTime get rangeEndExclusive => DateTime(endDate.year, endDate.month, endDate.day + 1);
 

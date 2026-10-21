@@ -194,8 +194,13 @@ class _ApplicationsScreenState extends State<ApplicationsScreen> {
     }
 
     try {
+      final activeSelection = widget.referenceDate != null
+          ? _selection
+          : _selection.reanchored(_now);
+      _selection = activeSelection;
+
       final result = await _resolvedService!.getApplicationsAnalytics(
-        selection: _selection,
+        selection: activeSelection,
         referenceDate: widget.referenceDate,
       );
 
