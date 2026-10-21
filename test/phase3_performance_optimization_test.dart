@@ -152,6 +152,16 @@ class Phase3TestRepository extends UsageRepository {
     sentNotificationKeys.add('$limitId:$notificationType:$dateKey');
   }
 
+  final Map<String, String> storedSettings = {};
+
+  @override
+  Future<String?> getSetting(String key) async => storedSettings[key];
+
+  @override
+  Future<void> setSetting(String key, String value) async {
+    storedSettings[key] = value;
+  }
+
   @override
   Future<List<FocusPreset>> getAllFocusPresets() async => List.unmodifiable(storedPresets);
 

@@ -428,5 +428,81 @@ void main() {
       expect(analytics.dailySeries.first.isToday, isTrue);
       expect(analytics.topApplications.first.appName, equals('Editor'));
     });
+
+    test('17. Period persistence: getSavedPeriod defaults to last7Days when no setting exists', () async {
+      final period = await analyticsService.getSavedPeriod();
+      expect(period, equals(AnalyticsPeriod.last7Days));
+    });
+
+    test('18. Period persistence: savePeriod persists and getSavedPeriod restores selection', () async {
+      await analyticsService.savePeriod(AnalyticsPeriod.today);
+      await analyticsService.pendingSaveOp;
+
+      final storedValue = await repository.getSetting(UsageAnalyticsService.insightsPeriodSettingKey);
+      expect(storedValue, equals('today'));
+
+      final restored = await analyticsService.getSavedPeriod();
+      expect(restored, equals(AnalyticsPeriod.today));
+    });
+
+    test('19. Period persistence: re-creating service with same repository restores saved selection', () async {
+      await analyticsService.savePeriod(AnalyticsPeriod.last30Days);
+      await analyticsService.pendingSaveOp;
+
+      // Create new service instance with same repository simulating app restart
+      final freshService = UsageAnalyticsService(repository: repository);
+      final restored = await freshService.getSavedPeriod();
+      expect(restored, equals(AnalyticsPeriod.last30Days));
+    });
+
+    test('20. Period persistence: handles invalid, corrupted, or blank stored values safely by returning last7Days', () async {
+      await repository.setSetting(UsageAnalyticsService.insightsPeriodSettingKey, 'invalid_period_garbage');
+      expect(await analyticsService.getSavedPeriod(), equals(AnalyticsPeriod.last7Days));
+
+      await repository.setSetting(UsageAnalyticsService.insightsPeriodSettingKey, '');
+      expect(await analyticsService.getSavedPeriod(), equals(AnalyticsPeriod.last7Days));
+
+      await repository.setSetting(UsageAnalyticsService.insightsPeriodSettingKey, '   ');
+      expect(await analyticsService.getSavedPeriod(), equals(AnalyticsPeriod.last7Days));
+    });
+
+    test('21. Period persistence: relative ranges re-anchor correctly when evaluated across date changes', () async {
+      // User has saved Today preference
+      await analyticsService.savePeriod(AnalyticsPeriod.today);
+      final savedPeriod = await analyticsService.getSavedPeriod();
+      expect(savedPeriod, equals(AnalyticsPeriod.today));
+
+      // Day 1 evaluation (Wednesday Oct 14)
+      final day1 = DateTime(2026, 10, 14, 10, 0);
+      final analyticsDay1 = await analyticsService.getAnalytics(
+        period: savedPeriod,
+        referenceDate: day1,
+      );
+      expect(analyticsDay1.startDate, equals(DateTime(2026, 10, 14)));
+      expect(analyticsDay1.endDate, equals(DateTime(2026, 10, 15)));
+
+      // Day 2 evaluation (Thursday Oct 15) - same restored period automatically shifts to new day
+      final day2 = DateTime(2026, 10, 15, 12, 0);
+      final analyticsDay2 = await analyticsService.getAnalytics(
+        period: savedPeriod,
+        referenceDate: day2,
+      );
+      expect(analyticsDay2.startDate, equals(DateTime(2026, 10, 15)));
+      expect(analyticsDay2.endDate, equals(DateTime(2026, 10, 16)));
+
+      // Same verification for last7Days: relative bounds shift with the date
+      await analyticsService.savePeriod(AnalyticsPeriod.last7Days);
+      final saved7Days = await analyticsService.getSavedPeriod();
+      final analytics7Day1 = await analyticsService.getAnalytics(
+        period: saved7Days,
+        referenceDate: day1,
+      );
+      final analytics7Day2 = await analyticsService.getAnalytics(
+        period: saved7Days,
+        referenceDate: day2,
+      );
+      expect(analytics7Day1.startDate, equals(DateTime(2026, 10, 8)));
+      expect(analytics7Day2.startDate, equals(DateTime(2026, 10, 9)));
+    });
   });
 }
