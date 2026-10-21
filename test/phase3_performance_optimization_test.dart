@@ -143,6 +143,18 @@ class Phase3TestRepository extends UsageRepository {
     storedActiveState = null;
   }
 
+  final Set<String> sentNotificationKeys = {};
+
+  @override
+  Future<bool> hasLimitNotificationBeenSent(int limitId, String notificationType, String dateKey) async {
+    return sentNotificationKeys.contains('$limitId:$notificationType:$dateKey');
+  }
+
+  @override
+  Future<void> recordLimitNotificationSent(int limitId, String notificationType, String dateKey, DateTime sentAt) async {
+    sentNotificationKeys.add('$limitId:$notificationType:$dateKey');
+  }
+
   @override
   Future<List<FocusPreset>> getAllFocusPresets() async => List.unmodifiable(storedPresets);
 
@@ -443,9 +455,10 @@ void main() {
 
       await focusService.stop();
       focusService.dispose();
+      limitsService.dispose();
       await tracker.stop();
       tracker.dispose();
-      limitsService.dispose();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
       enforcement.dispose();
       trayService.dispose();
     });
