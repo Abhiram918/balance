@@ -18,8 +18,17 @@ class FakeUsageRepository extends UsageRepository {
   final List<AppSession> sessions = [];
   final List<FocusSessionRecord> focusSessions = [];
   final List<AppLimit> limits = [];
+  final Map<String, String> settings = {};
 
   FakeUsageRepository() : super(dbName: 'fake_insights_test.db');
+
+  @override
+  Future<String?> getSetting(String key) async => settings[key];
+
+  @override
+  Future<void> setSetting(String key, String value) async {
+    settings[key] = value;
+  }
 
   @override
   Future<AppSession> insertSession(AppSession session) async {
@@ -332,6 +341,80 @@ void main() {
 
       // Tracker notification after dispose should not throw or cause errors
       expect(() => tracker.notifyListeners(), returnsNormally);
+    });
+
+    testWidgets('First-time user with no saved preference preserves default of Last 7 Days', (tester) async {
+      tester.view.physicalSize = const Size(1600, 1000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      // Ensure no saved setting exists
+      expect(repository.settings[UsageAnalyticsService.insightsPeriodSettingKey], isNull);
+
+      await tester.pumpWidget(buildTestApp());
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 200));
+
+      // Default is Last 7 Days
+      expect(find.text('Your weekly digital habits and trends over the last 7 calendar days.'), findsOneWidget);
+      expect(find.text('Last 7 Days'), findsOneWidget);
+    });
+
+    testWidgets('Selecting Today saves preference to repository and restores on screen restart', (tester) async {
+      tester.view.physicalSize = const Size(1600, 1000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      await tester.pumpWidget(buildTestApp());
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 200));
+
+      // Initially Last 7 Days
+      expect(find.text('Your weekly digital habits and trends over the last 7 calendar days.'), findsOneWidget);
+
+      // Select Today
+      final todayPill = find.text('Today');
+      await tester.tap(todayPill);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 200));
+
+      // Preference is saved in repository
+      expect(repository.settings[UsageAnalyticsService.insightsPeriodSettingKey], equals('today'));
+      expect(find.text('Your digital usage and active breakdown for today.'), findsOneWidget);
+
+      // Simulate app restart / screen recreation with a fresh widget tree
+      await tester.pumpWidget(
+        const MaterialApp(home: Scaffold(body: Text('Temporary Blank'))),
+      );
+      await tester.pump(const Duration(milliseconds: 50));
+
+      // Reopen InsightsScreen
+      await tester.pumpWidget(buildTestApp());
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 200));
+
+      // Insights automatically restores Today instead of resetting to Last 7 Days!
+      expect(find.text('Your digital usage and active breakdown for today.'), findsOneWidget);
+      expect(find.text("Today's Usage"), findsOneWidget);
+      expect(find.text('Your weekly digital habits and trends over the last 7 calendar days.'), findsNothing);
+    });
+
+    testWidgets('Corrupted or invalid saved preference safely falls back to Last 7 Days default', (tester) async {
+      tester.view.physicalSize = const Size(1600, 1000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      // Seed invalid/corrupted preference in repository
+      repository.settings[UsageAnalyticsService.insightsPeriodSettingKey] = 'invalid_corrupted_value';
+
+      await tester.pumpWidget(buildTestApp());
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 200));
+
+      // Safely defaults to Last 7 Days without throwing
+      expect(find.text('Your weekly digital habits and trends over the last 7 calendar days.'), findsOneWidget);
+      expect(find.text('Last 7 Days'), findsOneWidget);
     });
   });
 }

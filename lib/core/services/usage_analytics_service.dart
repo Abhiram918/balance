@@ -14,10 +14,47 @@ class UsageAnalyticsService {
   final UsageRepository repository;
   final WindowsUsageTracker? tracker;
 
+  static const String insightsPeriodSettingKey = 'insights_selected_period';
+
+  Future<void>? _pendingSaveOp;
+
+  /// Exposes any pending asynchronous save operation for deterministic testing.
+  Future<void> get pendingSaveOp => _pendingSaveOp ?? Future.value();
+
   UsageAnalyticsService({
     required this.repository,
     this.tracker,
   });
+
+  /// Retrieves the saved [AnalyticsPeriod] preference from the repository.
+  ///
+  /// Falls back to [AnalyticsPeriod.last7Days] if no preference is saved,
+  /// if the database cannot be queried, or if the stored value is invalid.
+  Future<AnalyticsPeriod> getSavedPeriod() async {
+    try {
+      final savedValue = await repository.getSetting(insightsPeriodSettingKey);
+      final parsed = AnalyticsPeriod.fromString(savedValue);
+      if (parsed != null) {
+        return parsed;
+      }
+    } catch (_) {
+      // Gracefully fall back on database error
+    }
+    return AnalyticsPeriod.last7Days;
+  }
+
+  /// Persists the user's selected [AnalyticsPeriod] to the repository.
+  Future<void> savePeriod(AnalyticsPeriod period) {
+    final op = () async {
+      try {
+        await repository.setSetting(insightsPeriodSettingKey, period.name);
+      } catch (_) {
+        // Gracefully ignore persistence errors
+      }
+    }();
+    _pendingSaveOp = op;
+    return op;
+  }
 
   /// Computes complete analytics for the requested reporting period.
   ///

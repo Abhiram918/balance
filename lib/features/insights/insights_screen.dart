@@ -19,6 +19,7 @@ class InsightsScreen extends StatefulWidget {
   final DateTime? referenceDate;
   final ValueListenable<bool>? windowVisibility;
   final Duration trackerUpdateThrottle;
+  final AnalyticsPeriod? initialPeriod;
 
   const InsightsScreen({
     super.key,
@@ -26,6 +27,7 @@ class InsightsScreen extends StatefulWidget {
     this.referenceDate,
     this.windowVisibility,
     this.trackerUpdateThrottle = const Duration(seconds: 15),
+    this.initialPeriod,
   });
 
   @override
@@ -33,7 +35,7 @@ class InsightsScreen extends StatefulWidget {
 }
 
 class _InsightsScreenState extends State<InsightsScreen> {
-  AnalyticsPeriod _selectedPeriod = AnalyticsPeriod.last7Days;
+  late AnalyticsPeriod _selectedPeriod;
   PeriodAnalytics? _analytics;
   bool _isLoading = true;
   bool _isFetching = false;
@@ -48,6 +50,12 @@ class _InsightsScreenState extends State<InsightsScreen> {
   ValueListenable<bool>? _visibilityListenable;
   bool _isWindowVisible = true;
   bool _needsRefreshOnRestore = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedPeriod = widget.initialPeriod ?? AnalyticsPeriod.last7Days;
+  }
 
   @override
   void didChangeDependencies() {
@@ -70,9 +78,13 @@ class _InsightsScreenState extends State<InsightsScreen> {
       _visibilityListenable?.addListener(_onVisibilityChanged);
       _isWindowVisible = _visibilityListenable?.value ?? true;
     }
+    if (widget.initialPeriod != null && widget.initialPeriod != oldWidget.initialPeriod) {
+      _selectedPeriod = widget.initialPeriod!;
+      _loadAnalytics(isInitial: false, force: true);
+    }
   }
 
-  void _initServiceAndLoad() {
+  Future<void> _initServiceAndLoad() async {
     final tracker = TrackerProvider.read(context);
     _tracker = tracker;
     _tracker?.addListener(_onTrackerNotification);
@@ -85,12 +97,27 @@ class _InsightsScreenState extends State<InsightsScreen> {
         tracker: tracker,
       );
     } else {
-      _errorMessage = 'Could not access tracking service';
-      _isLoading = false;
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Could not access tracking service';
+          _isLoading = false;
+        });
+      }
       return;
     }
 
-    _loadAnalytics(isInitial: true);
+    if (widget.initialPeriod == null) {
+      try {
+        final saved = await _resolvedService!.getSavedPeriod();
+        if (mounted) {
+          _selectedPeriod = saved;
+        }
+      } catch (_) {}
+    }
+
+    if (mounted) {
+      _loadAnalytics(isInitial: true);
+    }
   }
 
   @override
@@ -235,6 +262,7 @@ class _InsightsScreenState extends State<InsightsScreen> {
                 setState(() {
                   _selectedPeriod = period;
                 });
+                _resolvedService?.savePeriod(period);
                 _loadAnalytics(isInitial: false, force: true);
               }
             },
