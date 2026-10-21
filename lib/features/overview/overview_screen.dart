@@ -14,7 +14,12 @@ import '../../core/widgets/overview_date_picker_dialog.dart';
 /// Complete Overview redesign matching the reference image layout, typography,
 /// colors, card placement, working date pickers, and balanced column alignment.
 class OverviewScreen extends StatefulWidget {
-  const OverviewScreen({super.key});
+  final ValueListenable<bool>? windowVisibility;
+
+  const OverviewScreen({
+    super.key,
+    this.windowVisibility,
+  });
 
   @override
   State<OverviewScreen> createState() => _OverviewScreenState();
@@ -24,11 +29,91 @@ class _OverviewScreenState extends State<OverviewScreen> {
   late DateTime _selectedDate;
   DailyUsageSummary? _historicalSummary;
 
+  WindowsUsageTracker? _tracker;
+  FocusService? _focusService;
+  ValueListenable<bool>? _visibilityListenable;
+  bool _isWindowVisible = true;
+  bool _needsRefreshOnRestore = false;
+  bool _isDependenciesInitialized = false;
+
   @override
   void initState() {
     super.initState();
     final now = DateTime.now();
     _selectedDate = DateTime(now.year, now.month, now.day);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_isDependenciesInitialized) {
+      _isDependenciesInitialized = true;
+      _tracker = TrackerProvider.read(context);
+      _tracker?.addListener(_onTrackerOrFocusChanged);
+
+      try {
+        _focusService = FocusProvider.of(context);
+        _focusService?.addListener(_onTrackerOrFocusChanged);
+      } catch (_) {}
+
+      _visibilityListenable = widget.windowVisibility ?? WindowVisibilityProvider.of(context);
+      _visibilityListenable?.addListener(_onVisibilityChanged);
+      _isWindowVisible = _visibilityListenable?.value ?? true;
+    }
+  }
+
+  @override
+  void didUpdateWidget(OverviewScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.windowVisibility != widget.windowVisibility) {
+      _visibilityListenable?.removeListener(_onVisibilityChanged);
+      _visibilityListenable = widget.windowVisibility ?? WindowVisibilityProvider.of(context);
+      _visibilityListenable?.addListener(_onVisibilityChanged);
+      _isWindowVisible = _visibilityListenable?.value ?? true;
+    }
+  }
+
+  @override
+  void dispose() {
+    _tracker?.removeListener(_onTrackerOrFocusChanged);
+    _focusService?.removeListener(_onTrackerOrFocusChanged);
+    _visibilityListenable?.removeListener(_onVisibilityChanged);
+    super.dispose();
+  }
+
+  void _onTrackerOrFocusChanged() {
+    if (!mounted) return;
+    if (!_isWindowVisible) {
+      _needsRefreshOnRestore = true;
+      return;
+    }
+    setState(() {});
+  }
+
+  void _onVisibilityChanged() {
+    if (!mounted) return;
+    final isVisible = _visibilityListenable?.value ?? true;
+    if (_isWindowVisible != isVisible) {
+      _isWindowVisible = isVisible;
+      if (_isWindowVisible && _needsRefreshOnRestore) {
+        _needsRefreshOnRestore = false;
+        if (!_isToday) {
+          _refreshHistoricalSummary();
+        } else {
+          setState(() {});
+        }
+      }
+    }
+  }
+
+  Future<void> _refreshHistoricalSummary() async {
+    if (_tracker == null) return;
+    final summary = await _tracker!.getSummaryForDay(_selectedDate);
+    if (mounted) {
+      setState(() {
+        _historicalSummary = summary;
+      });
+    }
   }
 
   bool _isSameCalendarDay(DateTime a, DateTime b) {
@@ -116,132 +201,126 @@ class _OverviewScreenState extends State<OverviewScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.extension<AppThemeColors>()!;
-    final tracker = TrackerProvider.of(context);
-    final focusService = FocusProvider.of(context);
+    final tracker = _tracker ?? TrackerProvider.of(context);
 
-    return ListenableBuilder(
-      listenable: Listenable.merge([tracker, focusService]),
-      builder: (context, _) {
-        final todayData = tracker.todaySummary ?? DailyUsageSummary.empty(DateTime.now());
-        final data = _isToday
-            ? todayData
-            : (_historicalSummary ?? DailyUsageSummary.empty(_selectedDate));
+    final todayData = tracker.todaySummary ?? DailyUsageSummary.empty(DateTime.now());
+    final data = _isToday
+        ? todayData
+        : (_historicalSummary ?? DailyUsageSummary.empty(_selectedDate));
 
-        return Scaffold(
-          backgroundColor: colors.background,
-          body: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildHeader(context, colors, data),
-                const SizedBox(height: 24),
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    final isDesktop = constraints.maxWidth > 920;
-                    if (isDesktop) {
-                      return Column(
+    return Scaffold(
+      backgroundColor: colors.background,
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildHeader(context, colors, data),
+            const SizedBox(height: 24),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final isDesktop = constraints.maxWidth > 920;
+                if (isDesktop) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Top Row: 3 metric cards (left) + Tracking Status card (right)
+                      Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Top Row: 3 metric cards (left) + Tracking Status card (right)
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                flex: 6,
-                                child: Row(
-                                  children: [
-                                    Expanded(child: _buildScreenTimeCard(context, colors, data)),
-                                    const SizedBox(width: 14),
-                                    Expanded(child: _buildFocusTimeCard(context, colors, data)),
-                                    const SizedBox(width: 14),
-                                    Expanded(child: _buildBreaksCard(context, colors, data)),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                flex: 4,
-                                child: _buildTrackingStatusCard(context, colors, tracker),
-                              ),
-                            ],
+                          Expanded(
+                            flex: 6,
+                            child: Row(
+                              children: [
+                                Expanded(child: _buildScreenTimeCard(context, colors, data)),
+                                const SizedBox(width: 14),
+                                Expanded(child: _buildFocusTimeCard(context, colors, data)),
+                                const SizedBox(width: 14),
+                                Expanded(child: _buildBreaksCard(context, colors, data)),
+                              ],
+                            ),
                           ),
-                          const SizedBox(height: 16),
-                          // Main Body: Left Column (Daily Summary + Activity Timeline), Right Column (All Apps + Daily Activity)
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                flex: 6,
-                                child: Column(
-                                  children: [
-                                    DailySummaryCard(
-                                      data: data,
-                                      dateLabel: _summaryDateLabel,
-                                      onDateTap: _openDatePicker,
-                                      minHeight: 300,
-                                    ),
-                                    const SizedBox(height: 16),
-                                    _buildActivityTimelineCard(context, colors, data),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                flex: 4,
-                                child: Column(
-                                  children: [
-                                    _buildApplicationsCard(context, colors, data),
-                                    const SizedBox(height: 16),
-                                    _buildDailyActivityCard(context, colors, data),
-                                  ],
-                                ),
-                              ),
-                            ],
+                          const SizedBox(width: 16),
+                          Expanded(
+                            flex: 4,
+                            child: _buildTrackingStatusCard(context, colors, tracker),
                           ),
-                          _buildBottomStatusNote(context, colors),
                         ],
-                      );
-                    } else {
-                      // Compact / Responsive Stack
-                      return Column(
+                      ),
+                      const SizedBox(height: 16),
+                      // Main Body: Left Column (Daily Summary + Activity Timeline), Right Column (All Apps + Daily Activity)
+                      Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _buildTrackingStatusCard(context, colors, tracker),
-                          const SizedBox(height: 14),
-                          Row(
-                            children: [
-                              Expanded(child: _buildScreenTimeCard(context, colors, data)),
-                              const SizedBox(width: 10),
-                              Expanded(child: _buildFocusTimeCard(context, colors, data)),
-                              const SizedBox(width: 10),
-                              Expanded(child: _buildBreaksCard(context, colors, data)),
-                            ],
+                          Expanded(
+                            flex: 6,
+                            child: Column(
+                              children: [
+                                DailySummaryCard(
+                                  data: data,
+                                  dateLabel: _summaryDateLabel,
+                                  onDateTap: _openDatePicker,
+                                  minHeight: 300,
+                                ),
+                                const SizedBox(height: 16),
+                                _buildActivityTimelineCard(context, colors, data),
+                              ],
+                            ),
                           ),
-                          const SizedBox(height: 16),
-                          DailySummaryCard(
-                            data: data,
-                            dateLabel: _summaryDateLabel,
-                            onDateTap: _openDatePicker,
-                            minHeight: 300,
+                          const SizedBox(width: 16),
+                          Expanded(
+                            flex: 4,
+                            child: Column(
+                              children: [
+                                _buildApplicationsCard(context, colors, data),
+                                const SizedBox(height: 16),
+                                _buildDailyActivityCard(context, colors, data),
+                              ],
+                            ),
                           ),
-                          const SizedBox(height: 16),
-                          _buildActivityTimelineCard(context, colors, data),
-                          const SizedBox(height: 16),
-                          _buildApplicationsCard(context, colors, data),
-                          const SizedBox(height: 16),
-                          _buildDailyActivityCard(context, colors, data),
-                          _buildBottomStatusNote(context, colors),
                         ],
-                      );
-                    }
-                  },
-                ),
-              ],
+                      ),
+                      _buildBottomStatusNote(context, colors),
+                    ],
+                  );
+                } else {
+                  // Compact / Responsive Stack
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildTrackingStatusCard(context, colors, tracker),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Expanded(child: _buildScreenTimeCard(context, colors, data)),
+                          const SizedBox(width: 10),
+                          Expanded(child: _buildFocusTimeCard(context, colors, data)),
+                          const SizedBox(width: 10),
+                          Expanded(child: _buildBreaksCard(context, colors, data)),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      DailySummaryCard(
+                        data: data,
+                        dateLabel: _summaryDateLabel,
+                        onDateTap: _openDatePicker,
+                        minHeight: 300,
+                      ),
+                      const SizedBox(height: 16),
+                      _buildActivityTimelineCard(context, colors, data),
+                      const SizedBox(height: 16),
+                      _buildApplicationsCard(context, colors, data),
+                      const SizedBox(height: 16),
+                      _buildDailyActivityCard(context, colors, data),
+                      _buildBottomStatusNote(context, colors),
+                    ],
+                  );
+                }
+              },
             ),
-          ),
-        );
-      },
+          ],
+        ),
+      ),
     );
   }
 

@@ -27,6 +27,7 @@ class ApplicationsScreen extends StatefulWidget {
   final DateTime Function()? clock;
   final Duration backgroundThrottleDuration;
   final Duration debounceDuration;
+  final ValueListenable<bool>? windowVisibility;
 
   const ApplicationsScreen({
     super.key,
@@ -36,6 +37,7 @@ class ApplicationsScreen extends StatefulWidget {
     this.clock,
     this.backgroundThrottleDuration = const Duration(seconds: 10),
     this.debounceDuration = const Duration(milliseconds: 250),
+    this.windowVisibility,
   });
 
   @override
@@ -67,6 +69,10 @@ class _ApplicationsScreenState extends State<ApplicationsScreen> {
   Timer? _debounceTimer;
   DateTime _lastBackgroundLoadTime = DateTime.fromMillisecondsSinceEpoch(0);
 
+  ValueListenable<bool>? _visibilityListenable;
+  bool _isWindowVisible = true;
+  bool _needsRefreshOnRestore = false;
+
   DateTime get _now => widget.clock != null ? widget.clock!() : DateTime.now();
 
   @override
@@ -82,7 +88,21 @@ class _ApplicationsScreenState extends State<ApplicationsScreen> {
     super.didChangeDependencies();
     if (!_isInitialized) {
       _isInitialized = true;
+      _visibilityListenable = widget.windowVisibility ?? WindowVisibilityProvider.of(context);
+      _visibilityListenable?.addListener(_onVisibilityChanged);
+      _isWindowVisible = _visibilityListenable?.value ?? true;
       _initAndLoad();
+    }
+  }
+
+  @override
+  void didUpdateWidget(ApplicationsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.windowVisibility != widget.windowVisibility) {
+      _visibilityListenable?.removeListener(_onVisibilityChanged);
+      _visibilityListenable = widget.windowVisibility ?? WindowVisibilityProvider.of(context);
+      _visibilityListenable?.addListener(_onVisibilityChanged);
+      _isWindowVisible = _visibilityListenable?.value ?? true;
     }
   }
 
@@ -121,21 +141,44 @@ class _ApplicationsScreenState extends State<ApplicationsScreen> {
     _debounceTimer?.cancel();
     _tracker?.removeListener(_onTrackerOrLimitsChanged);
     _limitsService?.removeListener(_onTrackerOrLimitsChanged);
+    _visibilityListenable?.removeListener(_onVisibilityChanged);
     _searchController.dispose();
     super.dispose();
   }
 
   void _onTrackerOrLimitsChanged() {
     if (!mounted) return;
+    if (!_isWindowVisible) {
+      _needsRefreshOnRestore = true;
+      return;
+    }
     _debounceTimer?.cancel();
     _debounceTimer = Timer(widget.debounceDuration, () {
       if (!mounted) return;
+      if (!_isWindowVisible) {
+        _needsRefreshOnRestore = true;
+        return;
+      }
       final now = _now;
       if (now.difference(_lastBackgroundLoadTime) >= widget.backgroundThrottleDuration) {
         _lastBackgroundLoadTime = now;
         _loadAnalytics(isBackground: true);
       }
     });
+  }
+
+  void _onVisibilityChanged() {
+    if (!mounted) return;
+    final isVisible = _visibilityListenable?.value ?? true;
+    if (_isWindowVisible != isVisible) {
+      _isWindowVisible = isVisible;
+      if (_isWindowVisible && _needsRefreshOnRestore) {
+        _needsRefreshOnRestore = false;
+        _debounceTimer?.cancel();
+        _lastBackgroundLoadTime = _now;
+        _loadAnalytics(isBackground: true);
+      }
+    }
   }
 
   Future<void> _loadAnalytics({bool isBackground = false}) async {
@@ -237,6 +280,8 @@ class _ApplicationsScreenState extends State<ApplicationsScreen> {
         initialSelection: _selection,
         analyticsService: _resolvedService,
         referenceDate: widget.referenceDate,
+        windowVisibility: _visibilityListenable,
+        clock: widget.clock,
         onBack: () {
           setState(() {
             _selectedAppName = null;

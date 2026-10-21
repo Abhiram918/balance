@@ -16,11 +16,15 @@ import '../../core/widgets/page_header.dart';
 class InsightsScreen extends StatefulWidget {
   final UsageAnalyticsService? analyticsService;
   final DateTime? referenceDate;
+  final ValueListenable<bool>? windowVisibility;
+  final Duration trackerUpdateThrottle;
 
   const InsightsScreen({
     super.key,
     this.analyticsService,
     this.referenceDate,
+    this.windowVisibility,
+    this.trackerUpdateThrottle = const Duration(seconds: 15),
   });
 
   @override
@@ -40,15 +44,30 @@ class _InsightsScreenState extends State<InsightsScreen> {
   int _requestId = 0;
   DateTime _lastRefreshTime = DateTime.fromMillisecondsSinceEpoch(0);
 
-  // Throttle live tracker updates to avoid excessive database queries
-  static const Duration _trackerUpdateThrottle = Duration(seconds: 15);
+  ValueListenable<bool>? _visibilityListenable;
+  bool _isWindowVisible = true;
+  bool _needsRefreshOnRestore = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (!_isInitialized) {
       _isInitialized = true;
+      _visibilityListenable = widget.windowVisibility ?? WindowVisibilityProvider.of(context);
+      _visibilityListenable?.addListener(_onVisibilityChanged);
+      _isWindowVisible = _visibilityListenable?.value ?? true;
       _initServiceAndLoad();
+    }
+  }
+
+  @override
+  void didUpdateWidget(InsightsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.windowVisibility != widget.windowVisibility) {
+      _visibilityListenable?.removeListener(_onVisibilityChanged);
+      _visibilityListenable = widget.windowVisibility ?? WindowVisibilityProvider.of(context);
+      _visibilityListenable?.addListener(_onVisibilityChanged);
+      _isWindowVisible = _visibilityListenable?.value ?? true;
     }
   }
 
@@ -76,14 +95,31 @@ class _InsightsScreenState extends State<InsightsScreen> {
   @override
   void dispose() {
     _tracker?.removeListener(_onTrackerNotification);
+    _visibilityListenable?.removeListener(_onVisibilityChanged);
     super.dispose();
   }
 
   void _onTrackerNotification() {
     if (!mounted || _isFetching) return;
+    if (!_isWindowVisible) {
+      _needsRefreshOnRestore = true;
+      return;
+    }
     final now = DateTime.now();
-    if (now.difference(_lastRefreshTime) >= _trackerUpdateThrottle) {
+    if (now.difference(_lastRefreshTime) >= widget.trackerUpdateThrottle) {
       _loadAnalytics(isInitial: false);
+    }
+  }
+
+  void _onVisibilityChanged() {
+    if (!mounted) return;
+    final isVisible = _visibilityListenable?.value ?? true;
+    if (_isWindowVisible != isVisible) {
+      _isWindowVisible = isVisible;
+      if (_isWindowVisible && _needsRefreshOnRestore) {
+        _needsRefreshOnRestore = false;
+        _loadAnalytics(isInitial: false);
+      }
     }
   }
 

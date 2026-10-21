@@ -11,13 +11,84 @@ import '../../core/services/windows_app_discovery_service.dart';
 import '../../core/widgets/page_header.dart';
 import 'widgets/focus_preset_selector.dart';
 
-class FocusScreen extends StatelessWidget {
+class FocusScreen extends StatefulWidget {
   final WindowsAppDiscoveryService? discoveryService;
+  final ValueListenable<bool>? windowVisibility;
 
-  const FocusScreen({super.key, this.discoveryService});
+  const FocusScreen({
+    super.key,
+    this.discoveryService,
+    this.windowVisibility,
+  });
+
+  @override
+  State<FocusScreen> createState() => _FocusScreenState();
+}
+
+class _FocusScreenState extends State<FocusScreen> {
+  FocusService? _focusService;
+  ValueListenable<bool>? _visibilityListenable;
+  bool _isWindowVisible = true;
+  bool _needsRefreshOnRestore = false;
+  bool _isDependenciesInitialized = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_isDependenciesInitialized) {
+      _isDependenciesInitialized = true;
+      try {
+        _focusService = FocusProvider.of(context);
+        _focusService?.addListener(_onFocusChanged);
+      } catch (_) {}
+
+      _visibilityListenable = widget.windowVisibility ?? WindowVisibilityProvider.of(context);
+      _visibilityListenable?.addListener(_onVisibilityChanged);
+      _isWindowVisible = _visibilityListenable?.value ?? true;
+    }
+  }
+
+  @override
+  void didUpdateWidget(FocusScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.windowVisibility != widget.windowVisibility) {
+      _visibilityListenable?.removeListener(_onVisibilityChanged);
+      _visibilityListenable = widget.windowVisibility ?? WindowVisibilityProvider.of(context);
+      _visibilityListenable?.addListener(_onVisibilityChanged);
+      _isWindowVisible = _visibilityListenable?.value ?? true;
+    }
+  }
+
+  @override
+  void dispose() {
+    _focusService?.removeListener(_onFocusChanged);
+    _visibilityListenable?.removeListener(_onVisibilityChanged);
+    super.dispose();
+  }
+
+  void _onFocusChanged() {
+    if (!mounted) return;
+    if (!_isWindowVisible) {
+      _needsRefreshOnRestore = true;
+      return;
+    }
+    setState(() {});
+  }
+
+  void _onVisibilityChanged() {
+    if (!mounted) return;
+    final isVisible = _visibilityListenable?.value ?? true;
+    if (_isWindowVisible != isVisible) {
+      _isWindowVisible = isVisible;
+      if (_isWindowVisible && _needsRefreshOnRestore) {
+        _needsRefreshOnRestore = false;
+        setState(() {});
+      }
+    }
+  }
 
   WindowsAppDiscoveryService _getDiscoveryService(BuildContext context, FocusService focusService) {
-    if (discoveryService != null) return discoveryService!;
+    if (widget.discoveryService != null) return widget.discoveryService!;
     try {
       final limitsService = context.getInheritedWidgetOfExactType<LimitsProvider>()?.notifier;
       if (limitsService?.discoveryService != null) {
@@ -29,65 +100,60 @@ class FocusScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final focusService = FocusProvider.of(context);
+    final focusService = _focusService ?? FocusProvider.of(context);
     final discoveryService = _getDiscoveryService(context, focusService);
 
     return Scaffold(
-      body: ListenableBuilder(
-        listenable: focusService,
-        builder: (context, _) {
-          return SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl, vertical: AppSpacing.md),
-            child: Column(
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl, vertical: AppSpacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Expanded(
-                      child: PageHeader(
-                        title: 'Focus Mode',
-                        subtitle: 'Block distractions, work in intervals, and track your focus sessions.',
-                      ),
-                    ),
-                    if (kDebugMode)
-                      _buildDevNotificationAction(context, focusService),
-                  ],
+                const Expanded(
+                  child: PageHeader(
+                    title: 'Focus Mode',
+                    subtitle: 'Block distractions, work in intervals, and track your focus sessions.',
+                  ),
                 ),
-                const SizedBox(height: AppSpacing.sm),
-
-                // Presets Section
-                FocusPresetSelector(
-                  focusService: focusService,
-                  discoveryService: discoveryService,
-                ),
-                const SizedBox(height: AppSpacing.sm),
-
-                // Active Session Info Card (when running or paused)
-                if (focusService.isRunning || focusService.isPaused)
-                  _buildActiveSessionBanner(context, focusService),
-
-                // Mode Selector (only when idle)
-                if (focusService.isIdle) ...[
-                  _buildModeSelector(context, focusService),
-                  const SizedBox(height: AppSpacing.sm),
-                ],
-
-                // Timer or Completion Banner
-                if (focusService.isCompleted)
-                  _buildCompletionBanner(context, focusService)
-                else
-                  _buildTimerCircle(context, focusService),
-
-                const SizedBox(height: AppSpacing.md),
-                _buildControls(context, focusService),
-                const SizedBox(height: AppSpacing.xl),
-                _buildSessionHistory(context, focusService),
+                if (kDebugMode)
+                  _buildDevNotificationAction(context, focusService),
               ],
             ),
-          );
-        },
+            const SizedBox(height: AppSpacing.sm),
+
+            // Presets Section
+            FocusPresetSelector(
+              focusService: focusService,
+              discoveryService: discoveryService,
+            ),
+            const SizedBox(height: AppSpacing.sm),
+
+            // Active Session Info Card (when running or paused)
+            if (focusService.isRunning || focusService.isPaused)
+              _buildActiveSessionBanner(context, focusService),
+
+            // Mode Selector (only when idle)
+            if (focusService.isIdle) ...[
+              _buildModeSelector(context, focusService),
+              const SizedBox(height: AppSpacing.sm),
+            ],
+
+            // Timer or Completion Banner
+            if (focusService.isCompleted)
+              _buildCompletionBanner(context, focusService)
+            else
+              _buildTimerCircle(context, focusService),
+
+            const SizedBox(height: AppSpacing.md),
+            _buildControls(context, focusService),
+            const SizedBox(height: AppSpacing.xl),
+            _buildSessionHistory(context, focusService),
+          ],
+        ),
       ),
     );
   }

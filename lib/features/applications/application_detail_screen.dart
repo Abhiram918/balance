@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons/lucide_icons.dart';
@@ -21,6 +23,10 @@ class ApplicationDetailScreen extends StatefulWidget {
   final VoidCallback? onBack;
   final ApplicationAnalyticsService? analyticsService;
   final DateTime? referenceDate;
+  final Duration backgroundThrottleDuration;
+  final Duration debounceDuration;
+  final ValueListenable<bool>? windowVisibility;
+  final DateTime Function()? clock;
 
   const ApplicationDetailScreen({
     super.key,
@@ -30,6 +36,10 @@ class ApplicationDetailScreen extends StatefulWidget {
     this.onBack,
     this.analyticsService,
     this.referenceDate,
+    this.backgroundThrottleDuration = const Duration(seconds: 10),
+    this.debounceDuration = const Duration(milliseconds: 250),
+    this.windowVisibility,
+    this.clock,
   });
 
   @override
@@ -48,6 +58,12 @@ class _ApplicationDetailScreenState extends State<ApplicationDetailScreen> {
   bool _isInitialized = false;
   int _requestId = 0;
 
+  Timer? _debounceTimer;
+  DateTime _lastBackgroundLoadTime = DateTime.fromMillisecondsSinceEpoch(0);
+  ValueListenable<bool>? _visibilityListenable;
+  bool _isWindowVisible = true;
+  bool _needsRefreshOnRestore = false;
+
   @override
   void initState() {
     super.initState();
@@ -59,7 +75,21 @@ class _ApplicationDetailScreenState extends State<ApplicationDetailScreen> {
     super.didChangeDependencies();
     if (!_isInitialized) {
       _isInitialized = true;
+      _visibilityListenable = widget.windowVisibility ?? WindowVisibilityProvider.of(context);
+      _visibilityListenable?.addListener(_onVisibilityChanged);
+      _isWindowVisible = _visibilityListenable?.value ?? true;
       _initAndLoad();
+    }
+  }
+
+  @override
+  void didUpdateWidget(ApplicationDetailScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.windowVisibility != widget.windowVisibility) {
+      _visibilityListenable?.removeListener(_onVisibilityChanged);
+      _visibilityListenable = widget.windowVisibility ?? WindowVisibilityProvider.of(context);
+      _visibilityListenable?.addListener(_onVisibilityChanged);
+      _isWindowVisible = _visibilityListenable?.value ?? true;
     }
   }
 
@@ -89,19 +119,52 @@ class _ApplicationDetailScreenState extends State<ApplicationDetailScreen> {
       return;
     }
 
+    _lastBackgroundLoadTime = widget.clock != null ? widget.clock!() : DateTime.now();
     _loadAnalytics();
   }
 
   @override
   void dispose() {
+    _debounceTimer?.cancel();
     _tracker?.removeListener(_onTrackerOrLimitsChanged);
     _limitsService?.removeListener(_onTrackerOrLimitsChanged);
+    _visibilityListenable?.removeListener(_onVisibilityChanged);
     super.dispose();
   }
 
   void _onTrackerOrLimitsChanged() {
     if (!mounted) return;
-    _loadAnalytics(isBackground: true);
+    if (!_isWindowVisible) {
+      _needsRefreshOnRestore = true;
+      return;
+    }
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(widget.debounceDuration, () {
+      if (!mounted) return;
+      if (!_isWindowVisible) {
+        _needsRefreshOnRestore = true;
+        return;
+      }
+      final now = widget.clock != null ? widget.clock!() : DateTime.now();
+      if (now.difference(_lastBackgroundLoadTime) >= widget.backgroundThrottleDuration) {
+        _lastBackgroundLoadTime = now;
+        _loadAnalytics(isBackground: true);
+      }
+    });
+  }
+
+  void _onVisibilityChanged() {
+    if (!mounted) return;
+    final isVisible = _visibilityListenable?.value ?? true;
+    if (_isWindowVisible != isVisible) {
+      _isWindowVisible = isVisible;
+      if (_isWindowVisible && _needsRefreshOnRestore) {
+        _needsRefreshOnRestore = false;
+        _debounceTimer?.cancel();
+        _lastBackgroundLoadTime = widget.clock != null ? widget.clock!() : DateTime.now();
+        _loadAnalytics(isBackground: true);
+      }
+    }
   }
 
   Future<void> _loadAnalytics({bool isBackground = false}) async {

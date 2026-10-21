@@ -19,6 +19,21 @@ class WindowsTrayService with TrayListener, WindowListener {
   bool _isWindowHidden = false;
   bool get isWindowHidden => _isWindowHidden;
 
+  bool _isWindowMinimized = false;
+  bool get isWindowMinimized => _isWindowMinimized;
+
+  late final ValueNotifier<bool> _isWindowVisibleNotifier = ValueNotifier<bool>(true);
+  ValueListenable<bool> get windowVisibilityListenable => _isWindowVisibleNotifier;
+  ValueNotifier<bool> get windowVisibilityNotifier => _isWindowVisibleNotifier;
+  bool get isWindowVisible => _isWindowVisibleNotifier.value;
+
+  void _updateVisibility() {
+    final visible = !_isWindowHidden && !_isWindowMinimized;
+    if (_isWindowVisibleNotifier.value != visible) {
+      _isWindowVisibleNotifier.value = visible;
+    }
+  }
+
   bool _isShuttingDown = false;
   bool get isShuttingDown => _isShuttingDown;
 
@@ -79,6 +94,8 @@ class WindowsTrayService with TrayListener, WindowListener {
   /// Restores and brings the Balance window to the foreground.
   Future<void> restoreWindow() async {
     _isWindowHidden = false;
+    _isWindowMinimized = false;
+    _updateVisibility();
     if (isPlatformSupported) {
       try {
         await windowManager.show();
@@ -94,6 +111,7 @@ class WindowsTrayService with TrayListener, WindowListener {
   /// services, timers, and tracking active.
   Future<void> hideToTray() async {
     _isWindowHidden = true;
+    _updateVisibility();
     if (isPlatformSupported) {
       try {
         await windowManager.hide();
@@ -183,6 +201,19 @@ class WindowsTrayService with TrayListener, WindowListener {
   // --- WindowListener callbacks ---
 
   @override
+  void onWindowMinimize() {
+    _isWindowMinimized = true;
+    _updateVisibility();
+  }
+
+  @override
+  void onWindowRestore() {
+    _isWindowMinimized = false;
+    _isWindowHidden = false;
+    _updateVisibility();
+  }
+
+  @override
   void onWindowClose() async {
     bool isPreventClose = true;
     if (isPlatformSupported) {
@@ -206,5 +237,6 @@ class WindowsTrayService with TrayListener, WindowListener {
         trayManager.removeListener(this);
       } catch (_) {}
     }
+    _isWindowVisibleNotifier.dispose();
   }
 }

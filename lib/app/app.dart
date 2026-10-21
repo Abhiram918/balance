@@ -31,6 +31,15 @@ class BalanceApp extends StatefulWidget {
 }
 
 class _BalanceAppState extends State<BalanceApp> with WidgetsBindingObserver {
+  ValueNotifier<bool>? _ownVisibilityNotifier;
+
+  ValueNotifier<bool> get _effectiveVisibilityNotifier {
+    if (widget.trayService != null) {
+      return widget.trayService!.windowVisibilityNotifier;
+    }
+    return _ownVisibilityNotifier ??= ValueNotifier<bool>(true);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -43,6 +52,7 @@ class _BalanceAppState extends State<BalanceApp> with WidgetsBindingObserver {
     widget.focusService.dispose();
     widget.limitsService.dispose();
     widget.trayService?.dispose();
+    _ownVisibilityNotifier?.dispose();
     super.dispose();
   }
 
@@ -55,33 +65,53 @@ class _BalanceAppState extends State<BalanceApp> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    return SettingsProvider(
-      settingsService: widget.settingsService,
-      child: TrackerProvider(
-        tracker: widget.tracker,
-        child: FocusProvider(
-          focusService: widget.focusService,
-          child: LimitsProvider(
-            limitsService: widget.limitsService,
-            child: ListenableBuilder(
-              listenable: widget.settingsService,
-              builder: (context, _) {
-                return MaterialApp(
-                  title: 'Balance',
-                  debugShowCheckedModeBanner: false,
-                  themeMode: widget.settingsService.darkMode ? ThemeMode.dark : ThemeMode.light,
-                  theme: AppTheme.lightTheme,
-                  darkTheme: AppTheme.darkTheme,
-                  home: const AppBlockDialogManager(
-                    child: AppShell(),
-                  ),
-                );
-              },
+    return WindowVisibilityProvider(
+      visibilityNotifier: _effectiveVisibilityNotifier,
+      child: SettingsProvider(
+        settingsService: widget.settingsService,
+        child: TrackerProvider(
+          tracker: widget.tracker,
+          child: FocusProvider(
+            focusService: widget.focusService,
+            child: LimitsProvider(
+              limitsService: widget.limitsService,
+              child: ListenableBuilder(
+                listenable: widget.settingsService,
+                builder: (context, _) {
+                  return MaterialApp(
+                    title: 'Balance',
+                    debugShowCheckedModeBanner: false,
+                    themeMode: widget.settingsService.darkMode ? ThemeMode.dark : ThemeMode.light,
+                    theme: AppTheme.lightTheme,
+                    darkTheme: AppTheme.darkTheme,
+                    home: const AppBlockDialogManager(
+                      child: AppShell(),
+                    ),
+                  );
+                },
+              ),
             ),
           ),
         ),
       ),
     );
+  }
+}
+
+class WindowVisibilityProvider extends InheritedNotifier<ValueNotifier<bool>> {
+  const WindowVisibilityProvider({
+    super.key,
+    required ValueNotifier<bool> visibilityNotifier,
+    required super.child,
+  }) : super(notifier: visibilityNotifier);
+
+  static ValueNotifier<bool>? of(BuildContext context) {
+    return context.dependOnInheritedWidgetOfExactType<WindowVisibilityProvider>()?.notifier;
+  }
+
+  static bool isVisible(BuildContext context) {
+    final notifier = context.dependOnInheritedWidgetOfExactType<WindowVisibilityProvider>()?.notifier;
+    return notifier?.value ?? true;
   }
 }
 
@@ -136,5 +166,6 @@ class LimitsProvider extends InheritedNotifier<LimitsService> {
     return context.dependOnInheritedWidgetOfExactType<LimitsProvider>()!.notifier!;
   }
 }
+
 
 
