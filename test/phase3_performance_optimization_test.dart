@@ -311,6 +311,7 @@ void main() {
         checkpointInterval: const Duration(seconds: 15),
       );
       await tracker.init();
+      tracker.start();
 
       // Window starts visible
       expect(trayService.isWindowHidden, isFalse);
@@ -346,6 +347,7 @@ void main() {
       expect(trayService.isWindowHidden, isFalse);
       expect(trayService.isWindowVisible, isTrue);
 
+      await tracker.stop();
       tracker.dispose();
       trayService.dispose();
     });
@@ -389,6 +391,9 @@ void main() {
         foregroundWindowProvider: () => r'C:\Apps\Browser.exe',
       );
       await tracker.init();
+      tracker.start();
+      // Establish initial active foreground session at 14:00:00
+      await tracker.checkForegroundWindow();
 
       final limitsService = LimitsService(
         repository: repository,
@@ -409,7 +414,7 @@ void main() {
       await trayService.hideToTray();
       expect(trayService.isWindowHidden, isTrue);
 
-      // 1. Advance time past daily limit while hidden
+      // 1. Advance time past daily limit (5 mins) while hidden
       simulatedTime = simulatedTime.add(const Duration(minutes: 5, seconds: 5));
       await tracker.checkForegroundWindow();
 
@@ -436,6 +441,7 @@ void main() {
 
       await focusService.stop();
       focusService.dispose();
+      await tracker.stop();
       tracker.dispose();
       limitsService.dispose();
       enforcement.dispose();
@@ -544,7 +550,8 @@ void main() {
       await tester.pumpAndSettle();
 
       // Initial active time is 0h 0m
-      expect(find.text('0h 0m'), findsOneWidget);
+      expect(find.text('0h 0m'), findsWidgets);
+      expect(find.text('2h 15m'), findsNothing);
 
       // Hide window to system tray
       visibilityNotifier.value = false;
