@@ -6,7 +6,6 @@ import 'package:path/path.dart' as p;
 
 import 'package:balance/app/app.dart';
 import 'package:balance/app/theme/app_colors.dart';
-import 'package:balance/core/models/analytics_data.dart';
 import 'package:balance/core/models/app_limit.dart';
 import 'package:balance/core/models/app_session.dart';
 import 'package:balance/core/models/application_analytics_models.dart';
@@ -23,6 +22,38 @@ import 'package:balance/core/services/windows_tray_service.dart';
 import 'package:balance/core/services/windows_usage_tracker.dart';
 import 'package:balance/features/applications/applications_screen.dart';
 import 'package:balance/features/overview/overview_screen.dart';
+
+class FakeTrackerForMidnightTest extends WindowsUsageTracker {
+  DailyUsageSummary? _customSummary;
+
+  FakeTrackerForMidnightTest({
+    required super.repository,
+    required super.clock,
+  });
+
+  @override
+  DailyUsageSummary? get todaySummary => _customSummary;
+
+  @override
+  Future<DailyUsageSummary> getSummaryForDay(DateTime date) async {
+    return _customSummary ?? DailyUsageSummary.empty(date);
+  }
+
+  void updateDate(DateTime now) {
+    _customSummary = DailyUsageSummary(
+      date: DateTime(now.year, now.month, now.day),
+      totalActiveTime: const Duration(minutes: 10),
+      goalTime: const Duration(hours: 4),
+      focusTime: Duration.zero,
+      breaksTaken: 0,
+      breakDuration: Duration.zero,
+      hourlyActivity: const [],
+      mostUsedApps: const [],
+      allApps: const [],
+    );
+    notifyListeners();
+  }
+}
 
 class Phase4CountingAnalyticsService extends ApplicationAnalyticsService {
   int loadCalls = 0;
@@ -270,7 +301,6 @@ void main() {
     // 3. Restart recovery does not double-count or lose previously committed sessions
     test('3. Restart recovery does not double-count or lose previously committed sessions', () async {
       final repository = createUniqueRepository();
-      final day = DateTime(2026, 10, 21);
 
       // Seed 2 committed sessions from earlier in the day
       await repository.insertSession(AppSession(
@@ -402,20 +432,14 @@ void main() {
       final repository = createUniqueRepository();
       DateTime simulatedTime = DateTime(2026, 10, 21, 23, 58, 0);
 
-      final tracker = WindowsUsageTracker(
+      final tracker = FakeTrackerForMidnightTest(
         repository: repository,
         clock: () => simulatedTime,
-        idleTimeProvider: () => Duration.zero,
-        foregroundWindowProvider: () => r'C:\Tools\Code.exe',
       );
-      await tracker.init();
-      // Notice: Do NOT call tracker.start() in widget test to avoid infinite periodic timer pump timeout
+      tracker.updateDate(simulatedTime);
 
       final focusService = FocusService(repository: repository, clock: () => simulatedTime);
-      await focusService.init();
       final limitsService = LimitsService(repository: repository, tracker: tracker, clock: () => simulatedTime);
-      await limitsService.init();
-
       final analyticsService = Phase4CountingAnalyticsService(repository: repository);
 
       await tester.pumpWidget(
@@ -441,7 +465,7 @@ void main() {
 
       // Cross midnight to Oct 22
       simulatedTime = DateTime(2026, 10, 22, 0, 2, 0);
-      await tracker.checkForegroundWindow();
+      tracker.updateDate(simulatedTime);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
@@ -468,7 +492,6 @@ void main() {
         ),
       );
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
       await tester.pump(const Duration(milliseconds: 100));
 
       // Initial selection was re-anchored to Oct 22
