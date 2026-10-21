@@ -17,6 +17,29 @@ enum AnalyticsPeriod {
         return 'Last 30 Days';
     }
   }
+
+  /// Parses an [AnalyticsPeriod] from a raw string value.
+  /// Matches enum names (case-insensitive) or common aliases.
+  /// Returns null if [value] is null, empty, or unrecognized.
+  static AnalyticsPeriod? fromString(String? value) {
+    if (value == null) return null;
+    final clean = value.trim().toLowerCase();
+    for (final period in AnalyticsPeriod.values) {
+      if (period.name.toLowerCase() == clean) {
+        return period;
+      }
+    }
+    if (clean == 'today' || clean == '1day' || clean == 'day') {
+      return AnalyticsPeriod.today;
+    }
+    if (clean == 'last7days' || clean == 'past7days' || clean == '7days' || clean == 'week') {
+      return AnalyticsPeriod.last7Days;
+    }
+    if (clean == 'last30days' || clean == 'past30days' || clean == '30days' || clean == 'month') {
+      return AnalyticsPeriod.last30Days;
+    }
+    return null;
+  }
 }
 
 /// A single data point representing usage for one local calendar day.
