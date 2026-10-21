@@ -18,10 +18,12 @@ import '../../core/widgets/overview_date_picker_dialog.dart';
 /// colors, card placement, working date pickers, and balanced column alignment.
 class OverviewScreen extends StatefulWidget {
   final ValueListenable<bool>? windowVisibility;
+  final DateTime Function()? clock;
 
   const OverviewScreen({
     super.key,
     this.windowVisibility,
+    this.clock,
   });
 
   @override
@@ -40,10 +42,12 @@ class _OverviewScreenState extends State<OverviewScreen> {
   bool _needsRefreshOnRestore = false;
   bool _isDependenciesInitialized = false;
 
+  DateTime get _now => widget.clock != null ? widget.clock!() : DateTime.now();
+
   @override
   void initState() {
     super.initState();
-    final now = DateTime.now();
+    final now = _now;
     _selectedDate = DateTime(now.year, now.month, now.day);
   }
 
@@ -126,16 +130,16 @@ class _OverviewScreenState extends State<OverviewScreen> {
 
   bool get _isToday {
     if (_isAutoTrackingToday) {
-      final now = DateTime.now();
+      final now = _now;
       _selectedDate = DateTime(now.year, now.month, now.day);
       return true;
     }
-    final now = DateTime.now();
+    final now = _now;
     return _isSameCalendarDay(_selectedDate, now);
   }
 
   bool get _isYesterday {
-    final yesterday = DateTime.now().subtract(const Duration(days: 1));
+    final yesterday = _now.subtract(const Duration(days: 1));
     return _isSameCalendarDay(_selectedDate, yesterday);
   }
 
@@ -163,7 +167,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
     final norm = DateTime(newDate.year, newDate.month, newDate.day);
     if (!_isAutoTrackingToday && _isSameCalendarDay(_selectedDate, norm)) return;
 
-    final now = DateTime.now();
+    final now = _now;
     final today = DateTime(now.year, now.month, now.day);
 
     if (_isSameCalendarDay(norm, today)) {
@@ -192,7 +196,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
   }
 
   Future<void> _openDatePicker() async {
-    final now = DateTime.now();
+    final now = _now;
     final today = DateTime(now.year, now.month, now.day);
 
     final picked = await showDialog<DateTime>(
@@ -214,7 +218,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
     final colors = theme.extension<AppThemeColors>()!;
     final tracker = _tracker ?? TrackerProvider.of(context);
 
-    final todayData = tracker.todaySummary ?? DailyUsageSummary.empty(DateTime.now());
+    final todayData = tracker.todaySummary ?? DailyUsageSummary.empty(_now);
     final data = _isToday
         ? todayData
         : (_historicalSummary ?? DailyUsageSummary.empty(_selectedDate));
