@@ -1,5 +1,3 @@
-import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -22,7 +20,6 @@ import 'package:balance/core/services/windows_process_manager.dart';
 import 'package:balance/core/services/windows_tray_service.dart';
 import 'package:balance/core/services/windows_usage_tracker.dart';
 import 'package:balance/features/applications/applications_screen.dart';
-import 'package:balance/features/focus/focus_screen.dart';
 import 'package:balance/features/insights/insights_screen.dart';
 import 'package:balance/features/overview/overview_screen.dart';
 
