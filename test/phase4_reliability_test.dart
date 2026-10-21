@@ -39,8 +39,9 @@ class Phase4CountingAnalyticsService extends ApplicationAnalyticsService {
     lastSelection = selection;
     return ApplicationsAnalyticsResult(
       selection: selection,
-      totalScreenTime: Duration(hours: loadCalls),
-      activeAppsCount: 2,
+      totalUsage: Duration(hours: loadCalls),
+      totalLimitedApps: 0,
+      totalLimitReachedApps: 0,
       chartBars: const [],
       applications: [
         AppItemAnalytics(
@@ -576,7 +577,7 @@ void main() {
     // 8. Release build database directory resolution
     test('8. Database path resolves to local app data directory in Windows environment', () async {
       final repo = UsageRepository();
-      final defaultDir = repo.defaultDatabaseDirectory;
+      final defaultDir = UsageRepository.defaultDatabaseDirectory;
 
       if (Platform.isWindows) {
         final expectedLocal = Platform.environment['LOCALAPPDATA'];
