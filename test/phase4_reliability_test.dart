@@ -433,7 +433,8 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
 
       // Initially displays Day 1
       expect(find.textContaining('Today, Oct 21, 2026'), findsOneWidget);
@@ -441,7 +442,8 @@ void main() {
       // Cross midnight to Oct 22
       simulatedTime = DateTime(2026, 10, 22, 0, 2, 0);
       await tracker.checkForegroundWindow();
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
 
       // Screen MUST automatically track the new day ("Today, Oct 22, 2026") instead of flipping to "Yesterday"
       expect(find.textContaining('Today, Oct 22, 2026'), findsOneWidget);
@@ -465,7 +467,9 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 100));
 
       // Initial selection was re-anchored to Oct 22
       expect(analyticsService.lastSelection?.startDate, equals(DateTime(2026, 10, 22)));

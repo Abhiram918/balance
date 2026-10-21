@@ -79,7 +79,7 @@ class _ApplicationsScreenState extends State<ApplicationsScreen> {
   @override
   void initState() {
     super.initState();
-    final now = widget.referenceDate ?? DateTime.now();
+    final now = widget.referenceDate ?? _now;
     _selection = DateRangeSelection.today(now);
     _selectedAppName = widget.initialSelectedAppName;
   }
