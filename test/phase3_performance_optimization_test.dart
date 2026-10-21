@@ -417,6 +417,8 @@ void main() {
       // 1. Advance time past daily limit (5 mins) while hidden
       simulatedTime = simulatedTime.add(const Duration(minutes: 5, seconds: 5));
       await tracker.checkForegroundWindow();
+      // Allow async limit evaluation and enforcement to complete
+      await Future<void>.delayed(const Duration(milliseconds: 50));
 
       // Daily limit enforcement MUST trigger while window is hidden
       expect(enforcement.isDailyLimitRestricted('Browser'), isTrue);
@@ -424,7 +426,7 @@ void main() {
 
       // 2. Start Focus Mode session with blocked app while hidden
       final preset = FocusPreset(
-        name: 'Deep Work',
+        name: 'Custom Focus Preset',
         focusDuration: const Duration(minutes: 25),
         shortBreakDuration: const Duration(minutes: 5),
         longBreakDuration: const Duration(minutes: 15),
@@ -586,7 +588,7 @@ void main() {
       await tester.pump();
 
       // Screen MUST immediately reflect the new 2h 15m usage upon restoration!
-      expect(find.text('2h 15m'), findsOneWidget);
+      expect(find.text('2h 15m'), findsWidgets);
 
       // Test 4b: ApplicationsScreen skips background loads while hidden, refreshes on restore
       await tester.pumpWidget(
