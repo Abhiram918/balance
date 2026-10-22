@@ -7,6 +7,14 @@
 #include <memory>
 #include <string>
 
+// Unique window class name, single-instance mutex, and restore message registered for Balance.
+inline constexpr const wchar_t kWindowClassName[] =
+    L"BALANCE_FLUTTER_RUNNER_WIN32_WINDOW";
+inline constexpr const wchar_t kSingleInstanceMutexName[] =
+    L"Local\\Balance_App_SingleInstance_Mutex_39F8A1B2";
+inline constexpr const wchar_t kRestoreMessageName[] =
+    L"BALANCE_APP_RESTORE_INSTANCE_MSG";
+
 // A class abstraction for a high DPI-aware Win32 Window. Intended to be
 // inherited from by classes that wish to specialize with custom
 // rendering and input handling
