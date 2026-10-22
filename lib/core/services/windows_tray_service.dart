@@ -214,6 +214,15 @@ class WindowsTrayService with TrayListener, WindowListener {
   }
 
   @override
+  void onWindowFocus() {
+    if (_isWindowHidden || _isWindowMinimized) {
+      _isWindowHidden = false;
+      _isWindowMinimized = false;
+      _updateVisibility();
+    }
+  }
+
+  @override
   void onWindowClose() async {
     bool isPreventClose = true;
     if (isPlatformSupported) {

@@ -81,6 +81,20 @@ void main() {
       expect(restored, isTrue);
     });
 
+    test('onWindowFocus resets isWindowHidden and updates visibility', () async {
+      final service = WindowsTrayService(
+        isPlatformSupported: false,
+      );
+
+      await service.hideToTray();
+      expect(service.isWindowHidden, isTrue);
+      expect(service.isWindowVisible, isFalse);
+
+      service.onWindowFocus();
+      expect(service.isWindowHidden, isFalse);
+      expect(service.isWindowVisible, isTrue);
+    });
+
     test('cleanShutdown invokes onShutdown callback and guards against duplicate execution', () async {
       int shutdownCalls = 0;
       int exitCodeReceived = -1;
