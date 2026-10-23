@@ -2,11 +2,11 @@
 
 ### Take control of your screen time.
 
-Balance is a Windows digital wellbeing application built with Flutter. It helps you understand how you spend your time on your computer through application usage tracking, activity insights, and tools designed to encourage more intentional computer use.
+A digital wellbeing app for Windows. Understand your computer habits, track application usage, and make more intentional use of your time.
 
 <p align="center">
   <a href="https://github.com/Abhiram918/balance/releases/download/v1.0.0/BalanceSetup.exe">
-    <strong>↓ Download for Windows</strong>
+    <img src="https://img.shields.io/badge/Download%20for%20Windows-202020?style=for-the-badge&logo=windows&logoColor=white" alt="Download Balance for Windows" />
   </a>
   <br />
   <sub>Version 1.0.0 · Windows 64-bit</sub>
@@ -14,39 +14,45 @@ Balance is a Windows digital wellbeing application built with Flutter. It helps 
 
 ---
 
+## Meet Balance
+
+Balance brings your computer usage into focus, helping you see where your time goes and better understand your digital habits.
+
 ## Features
 
-- **Application Usage Tracking** — Monitor which applications you use and how much time you spend using them.
-- **Activity Insights** — Explore usage information to better understand your computer habits.
-- **App Limits** — Tools for setting application usage limits.
-- **Focus Tools** — Tools designed to support more intentional work sessions.
-- **System Tray Integration** — Keep Balance accessible from the Windows system tray.
+**Application usage**  
+See which applications you use and how much time you spend in them.
 
-> **Note:** Some features, including app limits and focus functionality, have limitations in this initial release.
+**Activity insights**  
+Explore your usage patterns to understand your computer habits.
 
-## Screenshots
+**App limits and focus tools**  
+Access tools designed to help you manage application usage and approach work more intentionally.
 
-*Screenshots coming soon.*
+**System tray**  
+Keep Balance accessible while you use your computer.
+
+## Preview
+
+<!-- Add genuine screenshots of Balance here. -->
+<p align="center">
+  <em>Application previews coming soon.</em>
+</p>
+
+---
 
 ## Installation
 
-1. Download Balance using the link above.
-2. Open `BalanceSetup.exe`.
-3. Follow the installation instructions.
-4. Launch Balance from the Start menu or desktop shortcut.
+1. Download Balance using the button above.
+2. Run `BalanceSetup.exe`.
+3. Follow the setup instructions and launch Balance.
 
-## Built With
-
-- [Flutter](https://flutter.dev/)
-- [Dart](https://dart.dev/)
-- SQLite
-
-## Feedback
-
-Found a bug or have a suggestion? [Open an issue](https://github.com/Abhiram918/balance/issues).
+<sub>Some features in this initial release have limitations.</sub>
 
 ---
 
 <p align="center">
-  Made with Flutter for Windows.
+  <a href="https://github.com/Abhiram918/balance/issues">Report an issue</a>
+  &nbsp; · &nbsp;
+  Built with Flutter for Windows
 </p>
