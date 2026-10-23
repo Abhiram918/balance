@@ -1,19 +1,12 @@
 # Balance
 
-<p align="center">
-  <img src="windows/runner/resources/app_icon.ico" width="88" alt="Balance app icon" />
-</p>
+### Take control of your screen time.
 
-<h3 align="center">Find your balance.</h3>
-
-<p align="center">
-  A Windows digital wellbeing app to help you understand your screen time,<br />
-  build awareness of your computer habits, and use your time more intentionally.
-</p>
+Balance is a Windows digital wellbeing application built with Flutter. It helps you understand how you spend your time on your computer through application usage tracking, activity insights, and tools designed to encourage more intentional computer use.
 
 <p align="center">
   <a href="https://github.com/Abhiram918/balance/releases/download/v1.0.0/BalanceSetup.exe">
-    ↓ <strong>Download for Windows</strong>
+    <strong>↓ Download for Windows</strong>
   </a>
   <br />
   <sub>Version 1.0.0 · Windows 64-bit</sub>
@@ -21,56 +14,39 @@
 
 ---
 
-## Built for digital wellbeing
+## Features
 
-Balance helps you understand your computer activity, see where your time goes, and make more informed choices about how you use your device.
+- **Application Usage Tracking** — Monitor which applications you use and how much time you spend using them.
+- **Activity Insights** — Explore usage information to better understand your computer habits.
+- **App Limits** — Tools for setting application usage limits.
+- **Focus Tools** — Tools designed to support more intentional work sessions.
+- **System Tray Integration** — Keep Balance accessible from the Windows system tray.
 
-<table>
-  <tr>
-    <td width="50%">
-      <strong>01 / Usage tracking</strong>
-      <br /><br />
-      Monitor the applications you use and the time you spend in them.
-    </td>
-    <td width="50%">
-      <strong>02 / Activity insights</strong>
-      <br /><br />
-      Explore usage information to better understand your computer habits.
-    </td>
-  </tr>
-  <tr>
-    <td width="50%">
-      <strong>03 / App limits</strong>
-      <br /><br />
-      Explore tools designed to help manage time spent in selected applications.
-    </td>
-    <td width="50%">
-      <strong>04 / Focus tools</strong>
-      <br /><br />
-      Access tools intended to support more intentional work sessions.
-    </td>
-  </tr>
-</table>
+> **Note:** Some features, including app limits and focus functionality, have limitations in this initial release.
 
-## Preview
+## Screenshots
 
-*Application screenshots coming soon.*
+*Screenshots coming soon.*
 
 ## Installation
 
-1. Download Balance using the link at the top of this page.
+1. Download Balance using the link above.
 2. Open `BalanceSetup.exe`.
 3. Follow the installation instructions.
-4. Launch Balance from the Windows Start menu or desktop shortcut.
+4. Launch Balance from the Start menu or desktop shortcut.
 
-> Some features in this initial release have limitations and may not yet provide their full intended functionality.
+## Built With
+
+- [Flutter](https://flutter.dev/)
+- [Dart](https://dart.dev/)
+- SQLite
+
+## Feedback
+
+Found a bug or have a suggestion? [Open an issue](https://github.com/Abhiram918/balance/issues).
 
 ---
 
 <p align="center">
-  <strong>Balance</strong>
-  <br />
-  <sub>Built with Flutter for Windows.</sub>
-  <br /><br />
-  <a href="https://github.com/Abhiram918/balance/issues">Report an issue</a>
+  Made with Flutter for Windows.
 </p>
