@@ -1,7 +1,7 @@
 # Balance
 
 <p align="center">
-  <img src="windows/runner/resources/app_icon.ico" width="96" alt="Balance app icon" />
+  <img src="windows/runner/resources/app_icon.ico" width="88" alt="Balance app icon" />
 </p>
 
 <h3 align="center">Find your balance.</h3>
@@ -13,19 +13,17 @@
 
 <p align="center">
   <a href="https://github.com/Abhiram918/balance/releases/download/v1.0.0/BalanceSetup.exe">
-    <img src="https://img.shields.io/badge/Download_for_Windows-202020?style=for-the-badge&logo=windows&logoColor=white" alt="Download Balance for Windows" />
+    ↓ <strong>Download for Windows</strong>
   </a>
-</p>
-
-<p align="center">
-  <sub>Version 1.0.0&nbsp; · &nbsp;Windows 64-bit</sub>
+  <br />
+  <sub>Version 1.0.0 · Windows 64-bit</sub>
 </p>
 
 ---
 
 ## Built for digital wellbeing
 
-Balance brings your computer activity into focus, helping you see where your time goes and make more informed choices about how you use your device.
+Balance helps you understand your computer activity, see where your time goes, and make more informed choices about how you use your device.
 
 <table>
   <tr>
@@ -56,24 +54,14 @@ Balance brings your computer activity into focus, helping you see where your tim
 
 ## Preview
 
-<p align="center">
-  <!-- Replace this placeholder with a genuine Balance screenshot. -->
-  <em>Application screenshots coming soon.</em>
-</p>
+*Application screenshots coming soon.*
 
 ## Installation
 
-**01. Download**
-
-Click **Download for Windows** at the top of this page.
-
-**02. Install**
-
-Open `BalanceSetup.exe` and follow the setup instructions.
-
-**03. Launch**
-
-Open Balance from the Windows Start menu or your desktop shortcut.
+1. Download Balance using the link at the top of this page.
+2. Open `BalanceSetup.exe`.
+3. Follow the installation instructions.
+4. Launch Balance from the Windows Start menu or desktop shortcut.
 
 > Some features in this initial release have limitations and may not yet provide their full intended functionality.
 
