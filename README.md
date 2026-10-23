@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/Abhiram918/balance/releases/download/v1.0.0/BalanceSetup.exe">
-    ↓ <strong>Download for Windows</strong>
+    <img src="https://img.shields.io/badge/↓%20%20Download%20for%20Windows-FFFFFF?style=for-the-badge&labelColor=FFFFFF" alt="Download for Windows" />
   </a>
   <br />
   <sub>Version 1.0.0 · Windows 64-bit</sub>
@@ -58,7 +58,7 @@ Balance helps you understand your computer activity, see where your time goes, a
 
 ## Installation
 
-1. Download Balance using the link at the top of this page.
+1. Download Balance using the button at the top of this page.
 2. Open `BalanceSetup.exe`.
 3. Follow the installation instructions.
 4. Launch Balance from the Windows Start menu or desktop shortcut.
