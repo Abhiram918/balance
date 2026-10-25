@@ -56,6 +56,12 @@ class LimitsService extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
+  Future<void>? _lastTrackerSync;
+
+  /// Visible for testing to deterministically wait for tracker synchronization.
+  @visibleForTesting
+  Future<void>? get lastTrackerSync => _lastTrackerSync;
+
   void _onTrackerChanged() {
     if (_isDisposed) return;
     if (tracker != null && tracker!.todaySummary != null) {
@@ -73,21 +79,26 @@ class LimitsService extends ChangeNotifier {
       // 2. Synchronously update daily limit restriction states
       enforcementService?.evaluateEnforcements(_limits, _todayAppUsage);
 
-      // 3. Immediately trigger foreground enforcement hook
-      final currentApp = tracker!.currentAppName;
-      final currentExe = tracker!.currentExePath;
-      if (currentApp != null && enforcementService != null) {
-        final used = getUsageForApp(currentApp, exePath: currentExe);
-        enforcementService!.onForegroundAppDetected(
-          appName: currentApp,
-          exePath: currentExe ?? '',
-          limits: _limits,
-          todayUsage: used,
-        );
-      }
+      // 3. Run and track asynchronous foreground enforcement and usage evaluation
+      _lastTrackerSync = _handleTrackerChangedAsync();
+    }
+  }
 
-      // 4. Evaluate toast notifications and background enforcements
-      evaluateUsage(summary: tracker!.todaySummary);
+  Future<void> _handleTrackerChangedAsync() async {
+    final currentApp = tracker?.currentAppName;
+    final currentExe = tracker?.currentExePath;
+    if (currentApp != null && enforcementService != null) {
+      final used = getUsageForApp(currentApp, exePath: currentExe);
+      await enforcementService!.onForegroundAppDetected(
+        appName: currentApp,
+        exePath: currentExe ?? '',
+        limits: _limits,
+        todayUsage: used,
+      );
+    }
+
+    if (tracker != null && tracker!.todaySummary != null) {
+      await evaluateUsage(summary: tracker!.todaySummary);
     }
   }
 

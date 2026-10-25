@@ -217,7 +217,8 @@ class AppEnforcementService extends ChangeNotifier {
       final key = limit.appName.trim().toLowerCase();
       Duration used = Duration.zero;
       for (final entry in usageMap.entries) {
-        if (entry.key.trim().toLowerCase() == key) {
+        final entryKey = entry.key.trim().toLowerCase();
+        if (entryKey == key || areAppAliases(entryKey, key)) {
           used = entry.value;
           break;
         }
