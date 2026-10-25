@@ -59,19 +59,35 @@ class LimitsService extends ChangeNotifier {
   void _onTrackerChanged() {
     if (_isDisposed) return;
     if (tracker != null && tracker!.todaySummary != null) {
-      evaluateUsage(summary: tracker!.todaySummary);
+      // 1. Immediately update in-memory usage map from tracker's summary
+      final summary = tracker!.todaySummary!;
+      final map = <String, Duration>{};
+      for (final app in summary.allApps) {
+        final clean = app.appName.trim().toLowerCase();
+        if (clean.isNotEmpty) {
+          map[clean] = app.duration;
+        }
+      }
+      _todayAppUsage = map;
 
+      // 2. Synchronously update daily limit restriction states
+      enforcementService?.evaluateEnforcements(_limits, _todayAppUsage);
+
+      // 3. Immediately trigger foreground enforcement hook
       final currentApp = tracker!.currentAppName;
       final currentExe = tracker!.currentExePath;
-      if (currentApp != null && currentExe != null && enforcementService != null) {
+      if (currentApp != null && enforcementService != null) {
         final used = getUsageForApp(currentApp, exePath: currentExe);
         enforcementService!.onForegroundAppDetected(
           appName: currentApp,
-          exePath: currentExe,
+          exePath: currentExe ?? '',
           limits: _limits,
           todayUsage: used,
         );
       }
+
+      // 4. Evaluate toast notifications and background enforcements
+      evaluateUsage(summary: tracker!.todaySummary);
     }
   }
 
@@ -107,6 +123,13 @@ class LimitsService extends ChangeNotifier {
       }
     }
 
+    // Match aliases
+    for (final entry in _todayAppUsage.entries) {
+      if (AppEnforcementService.areAppAliases(entry.key, key)) {
+        return entry.value;
+      }
+    }
+
     // Match by executable path or file name if provided
     if (exePath != null && exePath.trim().isNotEmpty) {
       final fileName = exePath.split(r'\').last.toLowerCase();
@@ -118,12 +141,17 @@ class LimitsService extends ChangeNotifier {
         if (entryKey == fileName || entryKey == base) {
           return entry.value;
         }
+        if (AppEnforcementService.areAppAliases(entryKey, base) ||
+            AppEnforcementService.areAppAliases(entryKey, fileName)) {
+          return entry.value;
+        }
       }
 
       if (discoveryService != null) {
         final friendly = discoveryService!.getFriendlyNameForExe(exePath).toLowerCase();
         for (final entry in _todayAppUsage.entries) {
-          if (entry.key.trim().toLowerCase() == friendly) {
+          final entryKey = entry.key.trim().toLowerCase();
+          if (entryKey == friendly || AppEnforcementService.areAppAliases(entryKey, friendly)) {
             return entry.value;
           }
         }
@@ -131,6 +159,52 @@ class LimitsService extends ChangeNotifier {
     }
 
     return Duration.zero;
+  }
+
+  bool _matchesApp(AppLimit limit, String appName, String exePath) {
+    if (enforcementService != null) {
+      return enforcementService!.matchesLimitApp(
+        limit: limit,
+        targetAppName: appName,
+        targetExePath: exePath,
+      );
+    }
+
+    final cleanLimitApp = limit.appName.trim().toLowerCase();
+    final cleanTargetApp = appName.trim().toLowerCase();
+    if (cleanLimitApp.isEmpty) return false;
+    if (cleanLimitApp == cleanTargetApp) return true;
+
+    if (AppEnforcementService.areAppAliases(cleanLimitApp, cleanTargetApp)) {
+      return true;
+    }
+
+    if (limit.exePath != null &&
+        limit.exePath!.trim().isNotEmpty &&
+        exePath.trim().isNotEmpty) {
+      if (limit.exePath!.trim().toLowerCase() == exePath.trim().toLowerCase()) {
+        return true;
+      }
+    }
+
+    if (exePath.isNotEmpty) {
+      final exeName = exePath.split(r'\').last.toLowerCase();
+      final baseName = exeName.endsWith('.exe')
+          ? exeName.substring(0, exeName.length - 4)
+          : exeName;
+      if (cleanLimitApp == exeName || cleanLimitApp == baseName) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  bool _isCurrentForegroundApp(AppLimit limit) {
+    if (tracker == null) return false;
+    final currentApp = tracker!.currentAppName;
+    if (currentApp == null || currentApp.trim().isEmpty) return false;
+    return _matchesApp(limit, currentApp, tracker!.currentExePath ?? '');
   }
 
   /// Calculates the remaining allowance for a limit. Never returns negative.
@@ -391,11 +465,14 @@ class LimitsService extends ChangeNotifier {
 
         // Automatic Application-Limit Enforcement
         if (limit.isEnforced) {
-          await enforcementService?.enforceLimit(
-            limit,
-            usedDuration: used,
-            triggerDialog: !alreadySent,
-          );
+          final isCurrentForeground = _isCurrentForegroundApp(limit);
+          if (!isCurrentForeground) {
+            await enforcementService?.enforceLimit(
+              limit,
+              usedDuration: used,
+              triggerDialog: tracker == null,
+            );
+          }
         }
       }
     }

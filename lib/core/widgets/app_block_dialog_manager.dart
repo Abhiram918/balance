@@ -18,12 +18,14 @@ import 'app_block_dialog.dart';
 class AppBlockDialogManager extends StatefulWidget {
   final LimitsService? limitsService;
   final AppEnforcementService? enforcementService;
+  final FutureOr<void> Function()? onRestoreWindow;
   final Widget child;
 
   const AppBlockDialogManager({
     super.key,
     this.limitsService,
     this.enforcementService,
+    this.onRestoreWindow,
     required this.child,
   });
 
@@ -94,6 +96,11 @@ class _AppBlockDialogManagerState extends State<AppBlockDialogManager> {
     _currentBlockedAppName = event.appName;
 
     try {
+      if (widget.onRestoreWindow != null) {
+        await widget.onRestoreWindow!();
+      }
+      if (!mounted) return;
+
       await showDialog<void>(
         context: context,
         barrierDismissible: true,

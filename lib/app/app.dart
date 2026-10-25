@@ -84,8 +84,11 @@ class _BalanceAppState extends State<BalanceApp> with WidgetsBindingObserver {
                     themeMode: widget.settingsService.darkMode ? ThemeMode.dark : ThemeMode.light,
                     theme: AppTheme.lightTheme,
                     darkTheme: AppTheme.darkTheme,
-                    home: const AppBlockDialogManager(
-                      child: AppShell(),
+                    home: AppBlockDialogManager(
+                      onRestoreWindow: widget.trayService != null
+                          ? () => widget.trayService!.restoreWindow()
+                          : null,
+                      child: const AppShell(),
                     ),
                   );
                 },

@@ -115,10 +115,52 @@ class AppEnforcementService extends ChangeNotifier {
   /// Active focus remaining duration (if focus enforcement is active).
   Duration? get activeFocusRemainingDuration => _activeFocusRemainingDuration;
 
+  /// Known common application name aliases on Windows (bidirectional).
+  static const Map<String, List<String>> _appAliases = {
+    'google chrome': ['chrome'],
+    'chrome': ['google chrome'],
+    'visual studio code': ['code'],
+    'code': ['visual studio code'],
+    'telegram desktop': ['telegram'],
+    'telegram': ['telegram desktop'],
+    'microsoft edge': ['msedge', 'edge'],
+    'msedge': ['microsoft edge', 'edge'],
+    'edge': ['microsoft edge', 'msedge'],
+    'whatsapp': ['whatsapp.root'],
+    'whatsapp.root': ['whatsapp'],
+    'snipping tool': ['snippingtool'],
+    'snippingtool': ['snipping tool'],
+    'mozilla firefox': ['firefox'],
+    'firefox': ['mozilla firefox'],
+  };
+
+  /// Checks if two application names are known aliases of each other.
+  static bool areAppAliases(String name1, String name2) {
+    final n1 = name1.trim().toLowerCase();
+    final n2 = name2.trim().toLowerCase();
+    if (n1.isEmpty || n2.isEmpty) return false;
+    if (n1 == n2) return true;
+
+    final aliases1 = _appAliases[n1];
+    if (aliases1 != null && aliases1.contains(n2)) return true;
+
+    final aliases2 = _appAliases[n2];
+    if (aliases2 != null && aliases2.contains(n1)) return true;
+
+    return false;
+  }
+
   /// Returns whether the specified application currently has active daily limit restriction.
   bool isDailyLimitRestricted(String appName) {
     _checkDailyReset();
-    return _dailyLimitRestrictedApps.contains(appName.trim().toLowerCase());
+    final cleanName = appName.trim().toLowerCase();
+    if (_dailyLimitRestrictedApps.contains(cleanName)) return true;
+    for (final restricted in _dailyLimitRestrictedApps) {
+      if (areAppAliases(restricted, cleanName)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /// Returns whether the specified application is restricted by active Focus Mode.
@@ -146,7 +188,10 @@ class AppEnforcementService extends ChangeNotifier {
   /// Never modifies focus session restrictions.
   void removeRestriction(String appName) {
     final key = appName.trim().toLowerCase();
-    if (_dailyLimitRestrictedApps.remove(key)) {
+    final countBefore = _dailyLimitRestrictedApps.length;
+    _dailyLimitRestrictedApps.remove(key);
+    _dailyLimitRestrictedApps.removeWhere((app) => areAppAliases(app, key));
+    if (_dailyLimitRestrictedApps.length != countBefore) {
       notifyListeners();
     }
   }
@@ -291,7 +336,15 @@ class AppEnforcementService extends ChangeNotifier {
     final now = _clock();
 
     // Check enforcement cooldown to prevent rapid thrashing loops
-    final lastTime = _lastFocusEnforcementTime[cleanName];
+    DateTime? lastTime = _lastFocusEnforcementTime[cleanName];
+    if (lastTime == null) {
+      for (final entry in _lastFocusEnforcementTime.entries) {
+        if (areAppAliases(entry.key, cleanName)) {
+          lastTime = entry.value;
+          break;
+        }
+      }
+    }
     if (lastTime != null && now.difference(lastTime) < _cooldownDuration) {
       return EnforcementResult(
         appName: app.appName,
@@ -300,6 +353,24 @@ class AppEnforcementService extends ChangeNotifier {
       );
     }
     _lastFocusEnforcementTime[cleanName] = now;
+
+    // Dispatch Block Dialog event BEFORE waiting for process close
+    // so users receive a timely explanation without allowing restricted
+    // applications to bypass enforcement.
+    if (triggerDialog) {
+      final effectiveRemaining =
+          remainingDuration ?? _activeFocusRemainingDuration ?? Duration.zero;
+      final event = AppBlockEvent(
+        appName: app.appName,
+        exePath: app.exePath,
+        reason: AppBlockReason.focusSession,
+        focusPresetName: presetName ?? _activeFocusPresetName,
+        remainingFocusDuration: effectiveRemaining,
+        resetTime: now.add(effectiveRemaining),
+        timestamp: now,
+      );
+      dispatchBlockEvent(event);
+    }
 
     final closeResult = await _closeProcessesForApp(
       appName: app.appName,
@@ -315,22 +386,6 @@ class AppEnforcementService extends ChangeNotifier {
       message:
           'Enforced focus block on ${app.appName}. Discovered: ${closeResult.discovered}, Gracefully closed: ${closeResult.gracefullyClosed}, Terminated: ${closeResult.terminated}.',
     );
-
-    // Dispatch Block Dialog event if requested
-    if (triggerDialog) {
-      final effectiveRemaining =
-          remainingDuration ?? _activeFocusRemainingDuration ?? Duration.zero;
-      final event = AppBlockEvent(
-        appName: app.appName,
-        exePath: app.exePath,
-        reason: AppBlockReason.focusSession,
-        focusPresetName: presetName ?? _activeFocusPresetName,
-        remainingFocusDuration: effectiveRemaining,
-        resetTime: now.add(effectiveRemaining),
-        timestamp: now,
-      );
-      dispatchBlockEvent(event);
-    }
 
     // Trigger desktop notification if requested and not throttled
     if (triggerNotification && notificationService != null) {
@@ -372,7 +427,15 @@ class AppEnforcementService extends ChangeNotifier {
 
     // Check enforcement debounce/cooldown to prevent rapid thrashing loops
     final now = _clock();
-    final lastTime = _lastDailyEnforcementTime[cleanName];
+    DateTime? lastTime = _lastDailyEnforcementTime[cleanName];
+    if (lastTime == null) {
+      for (final entry in _lastDailyEnforcementTime.entries) {
+        if (areAppAliases(entry.key, cleanName)) {
+          lastTime = entry.value;
+          break;
+        }
+      }
+    }
     if (lastTime != null && now.difference(lastTime) < _cooldownDuration) {
       return EnforcementResult(
         appName: limit.appName,
@@ -381,6 +444,23 @@ class AppEnforcementService extends ChangeNotifier {
       );
     }
     _lastDailyEnforcementTime[cleanName] = now;
+
+    // Dispatch Block Dialog event BEFORE waiting for graceful close/kill
+    // so users receive a timely explanation without allowing restricted
+    // applications to bypass enforcement.
+    if (triggerDialog) {
+      final nextMidnight = DateTime(now.year, now.month, now.day + 1);
+      final event = AppBlockEvent(
+        appName: limit.appName,
+        exePath: limit.exePath,
+        reason: AppBlockReason.dailyLimit,
+        limitDuration: limit.limitDuration,
+        usedDuration: usedDuration ?? limit.limitDuration,
+        resetTime: nextMidnight,
+        timestamp: now,
+      );
+      dispatchBlockEvent(event);
+    }
 
     final closeResult = await _closeProcessesForApp(
       appName: limit.appName,
@@ -396,21 +476,6 @@ class AppEnforcementService extends ChangeNotifier {
       message:
           'Enforced limit on ${limit.appName}. Discovered: ${closeResult.discovered}, Gracefully closed: ${closeResult.gracefullyClosed}, Terminated: ${closeResult.terminated}.',
     );
-
-    // Dispatch Block Dialog event if requested and applicable
-    if (triggerDialog) {
-      final nextMidnight = DateTime(now.year, now.month, now.day + 1);
-      final event = AppBlockEvent(
-        appName: limit.appName,
-        exePath: limit.exePath,
-        reason: AppBlockReason.dailyLimit,
-        limitDuration: limit.limitDuration,
-        usedDuration: usedDuration ?? limit.limitDuration,
-        resetTime: nextMidnight,
-        timestamp: now,
-      );
-      dispatchBlockEvent(event);
-    }
 
     return result;
   }
@@ -456,7 +521,6 @@ class AppEnforcementService extends ChangeNotifier {
     }
 
     // 2. Check Daily Limit restrictions
-    final cleanName = appName.trim().toLowerCase();
     AppLimit? matchingLimit;
     for (final l in limits) {
       if (_matchesApp(l, appName, exePath)) {
@@ -469,7 +533,11 @@ class AppEnforcementService extends ChangeNotifier {
       return;
     }
 
-    if (todayUsage >= matchingLimit.limitDuration || _dailyLimitRestrictedApps.contains(cleanName)) {
+    final isRestricted = isDailyLimitRestricted(appName) ||
+        isDailyLimitRestricted(matchingLimit.appName) ||
+        todayUsage >= matchingLimit.limitDuration;
+
+    if (isRestricted) {
       debugPrint('Enforced application reopened while exceeded: $appName. Closing and prompting dialog...');
       await enforceLimit(
         matchingLimit,
@@ -565,36 +633,51 @@ class AppEnforcementService extends ChangeNotifier {
     }
 
     // Common alias matching
-    if (cleanBlocked == 'google chrome' && cleanTarget == 'chrome') return true;
-    if (cleanBlocked == 'visual studio code' && cleanTarget == 'code') return true;
-    if (cleanBlocked == 'telegram desktop' && cleanTarget == 'telegram') return true;
-    if (cleanBlocked == 'microsoft edge' && cleanTarget == 'msedge') return true;
-    if (cleanBlocked == 'whatsapp' && (cleanTarget == 'whatsapp.root' || cleanTarget == 'whatsapp')) return true;
-    if (cleanBlocked == 'snipping tool' && cleanTarget == 'snippingtool') return true;
-    if (cleanBlocked == 'mozilla firefox' && cleanTarget == 'firefox') return true;
+    if (areAppAliases(cleanBlocked, cleanTarget)) return true;
 
     return false;
   }
 
   bool _matchesApp(AppLimit limit, String appName, String exePath) {
+    return matchesLimitApp(
+      limit: limit,
+      targetAppName: appName,
+      targetExePath: exePath,
+    );
+  }
+
+  /// Evaluates whether an application name and executable match a configured limit,
+  /// with full support for executable paths, base names, and common Windows aliases.
+  bool matchesLimitApp({
+    required AppLimit limit,
+    required String targetAppName,
+    required String targetExePath,
+  }) {
     final cleanLimitApp = limit.appName.trim().toLowerCase();
-    final cleanTargetApp = appName.trim().toLowerCase();
+    final cleanTargetApp = targetAppName.trim().toLowerCase();
+    if (cleanLimitApp.isEmpty) return false;
     if (cleanLimitApp == cleanTargetApp) return true;
 
-    if (limit.exePath != null && limit.exePath!.isNotEmpty && exePath.isNotEmpty) {
-      if (limit.exePath!.trim().toLowerCase() == exePath.trim().toLowerCase()) {
+    if (limit.exePath != null &&
+        limit.exePath!.trim().isNotEmpty &&
+        targetExePath.trim().isNotEmpty) {
+      if (limit.exePath!.trim().toLowerCase() == targetExePath.trim().toLowerCase()) {
         return true;
       }
     }
 
-    if (exePath.isNotEmpty) {
-      final exeName = exePath.split(r'\').last.toLowerCase();
+    if (targetExePath.isNotEmpty) {
+      final exeName = targetExePath.split(r'\').last.toLowerCase();
       final baseName = exeName.endsWith('.exe')
           ? exeName.substring(0, exeName.length - 4)
           : exeName;
       if (cleanLimitApp == exeName || cleanLimitApp == baseName) {
         return true;
       }
+    }
+
+    if (areAppAliases(cleanLimitApp, cleanTargetApp)) {
+      return true;
     }
 
     return false;
