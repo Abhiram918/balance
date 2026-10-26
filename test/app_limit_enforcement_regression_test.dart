@@ -25,6 +25,7 @@ class MockProcess {
   final String exePath;
   bool isAlive;
   bool exitsOnGracefulClose;
+  bool canBeTerminated;
 
   MockProcess({
     required this.pid,
@@ -33,6 +34,7 @@ class MockProcess {
     required this.exePath,
     this.isAlive = true,
     this.exitsOnGracefulClose = true,
+    this.canBeTerminated = true,
   });
 }
 
@@ -105,7 +107,7 @@ class FakeProcessManager implements ProcessManager {
       mock.isAlive = false;
       return true;
     }
-    return true;
+    return false;
   }
 
   @override
@@ -119,7 +121,7 @@ class FakeProcessManager implements ProcessManager {
   Future<bool> terminateProcess(int pid) async {
     terminatedPids.add(pid);
     final idx = processes.indexWhere((p) => p.pid == pid);
-    if (idx != -1) {
+    if (idx != -1 && processes[idx].canBeTerminated) {
       processes[idx].isAlive = false;
       return true;
     }
@@ -206,6 +208,21 @@ class FakeUsageRepository extends UsageRepository {
       s.startTime.month == date.month &&
       s.startTime.day == date.day
     ).toList();
+  }
+
+  @override
+  Future<void> updateSessionEndTime(int sessionId, DateTime endTime) async {
+    final idx = storedSessions.indexWhere((s) => s.id == sessionId);
+    if (idx != -1) {
+      final s = storedSessions[idx];
+      storedSessions[idx] = AppSession(
+        id: s.id,
+        appName: s.appName,
+        exePath: s.exePath,
+        startTime: s.startTime,
+        endTime: endTime,
+      );
+    }
   }
 
   @override
@@ -716,6 +733,206 @@ void main() {
       expect(restoredFired, isTrue);
 
       trayService.dispose();
+    });
+
+    testWidgets('8. Repeated blocked launches with realistic background polling between launches: Dialog appears on every relaunch', (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      await limitsService.createLimit(
+        appName: 'Google Chrome',
+        duration: const Duration(minutes: 10),
+        isEnforced: true,
+      );
+
+      String currentForegroundExe = r'C:\Program Files\Google\Chrome\Application\chrome.exe';
+      final tracker = WindowsUsageTracker(
+        repository: repository,
+        clock: () => testTime,
+        idleTimeProvider: () => Duration.zero,
+        foregroundWindowProvider: () => currentForegroundExe,
+      );
+      await tracker.init();
+
+      final trackerLimitsService = LimitsService(
+        repository: repository,
+        tracker: tracker,
+        enforcementService: enforcementService,
+        notificationService: notificationService,
+        clock: () => testTime,
+      );
+      await trackerLimitsService.init();
+
+      int restoreWindowCalls = 0;
+      final trayService = WindowsTrayService(
+        onRestore: () => restoreWindowCalls++,
+        isPlatformSupported: false,
+      );
+      await trayService.init();
+
+      await tester.pumpWidget(
+        LimitsProvider(
+          limitsService: trackerLimitsService,
+          child: MaterialApp(
+            theme: ThemeData.dark().copyWith(extensions: [AppThemeColors.dark]),
+            home: AppBlockDialogManager(
+              onRestoreWindow: () => trayService.restoreWindow(),
+              child: const Scaffold(body: Center(child: Text('Shell'))),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // Launch 1: Initial block when limit is exceeded
+      processManager.processes.add(MockProcess(
+        pid: 801,
+        appName: 'Google Chrome',
+        exeName: 'chrome.exe',
+        exePath: r'C:\Program Files\Google\Chrome\Application\chrome.exe',
+      ));
+
+      await tracker.checkForegroundWindow();
+      await trackerLimitsService.lastTrackerSync;
+
+      testTime = testTime.add(const Duration(minutes: 11));
+      await tracker.checkForegroundWindow();
+      await trackerLimitsService.lastTrackerSync;
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(find.byType(AppBlockDialog), findsOneWidget, reason: 'Initial dialog appears');
+      expect(processManager.processes.first.isAlive, isFalse, reason: 'PID 801 terminated');
+
+      // Dismiss dialog 1
+      await tester.tap(find.byKey(const Key('block_dialog_got_it_button')));
+      await tester.pumpAndSettle();
+      expect(find.byType(AppBlockDialog), findsNothing);
+
+      // Background polling between launches while user is in Balance
+      currentForegroundExe = r'C:\Program Files\Balance\Balance.exe';
+      testTime = testTime.add(const Duration(seconds: 2));
+      await tracker.checkForegroundWindow();
+      await trackerLimitsService.lastTrackerSync;
+      await tester.pump();
+      expect(find.byType(AppBlockDialog), findsNothing, reason: 'Background polling produces no phantom dialogs');
+
+      // Launch 2: User launches Chrome again; becomes foreground within 1 second of polling tick
+      currentForegroundExe = r'C:\Program Files\Google\Chrome\Application\chrome.exe';
+      testTime = testTime.add(const Duration(seconds: 1));
+      processManager.processes.add(MockProcess(
+        pid: 802,
+        appName: 'Google Chrome',
+        exeName: 'chrome.exe',
+        exePath: r'C:\Program Files\Google\Chrome\Application\chrome.exe',
+      ));
+
+      await tracker.checkForegroundWindow();
+      await trackerLimitsService.lastTrackerSync;
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(find.byType(AppBlockDialog), findsOneWidget, reason: 'Relaunch 2 displays dialog even with 1s gap from polling');
+      expect(processManager.processes.last.isAlive, isFalse, reason: 'PID 802 terminated');
+
+      // Dismiss dialog 2
+      await tester.tap(find.byKey(const Key('block_dialog_got_it_button')));
+      await tester.pumpAndSettle();
+      expect(find.byType(AppBlockDialog), findsNothing);
+
+      // Background polling again
+      currentForegroundExe = r'C:\Program Files\Balance\Balance.exe';
+      testTime = testTime.add(const Duration(seconds: 2));
+      await tracker.checkForegroundWindow();
+      await trackerLimitsService.lastTrackerSync;
+      await tester.pump();
+      expect(find.byType(AppBlockDialog), findsNothing);
+
+      // Launch 3: User launches Chrome; process is created BEFORE window becomes foreground
+      // Background enforcement intercepts and terminates the process
+      testTime = testTime.add(const Duration(seconds: 1));
+      processManager.processes.add(MockProcess(
+        pid: 803,
+        appName: 'Google Chrome',
+        exeName: 'chrome.exe',
+        exePath: r'C:\Program Files\Google\Chrome\Application\chrome.exe',
+      ));
+      // Notice: foreground window is still Balance when polling tick fires!
+      await tracker.checkForegroundWindow();
+      await trackerLimitsService.lastTrackerSync;
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(find.byType(AppBlockDialog), findsOneWidget, reason: 'Relaunch 3 displays dialog when intercepted during background sweep');
+      expect(processManager.processes.last.isAlive, isFalse, reason: 'PID 803 terminated');
+
+      // Dismiss dialog 3 cleanly
+      await tester.tap(find.byKey(const Key('block_dialog_got_it_button')));
+      await tester.pumpAndSettle();
+      expect(find.byType(AppBlockDialog), findsNothing);
+
+      trackerLimitsService.dispose();
+      tracker.dispose();
+      trayService.dispose();
+    });
+
+    test('9. Background enforcement requires actual process termination to request warning dialog', () async {
+      final limit = AppLimit(
+        id: 9,
+        appName: 'ProtectedApp',
+        limitDuration: const Duration(minutes: 5),
+        isEnabled: true,
+        isEnforced: true,
+        createdAt: testTime,
+        updatedAt: testTime,
+      );
+
+      final blockEvents = <AppBlockEvent>[];
+      final sub = enforcementService.blockEvents.listen(blockEvents.add);
+
+      // Case A: Discovered process that cannot be gracefully closed or terminated (e.g. system protected)
+      processManager.processes.add(MockProcess(
+        pid: 901,
+        appName: 'ProtectedApp',
+        exeName: 'ProtectedApp.exe',
+        exePath: r'C:\ProtectedApp.exe',
+        exitsOnGracefulClose: false,
+        canBeTerminated: false,
+      ));
+
+      final resultFailed = await enforcementService.enforceLimit(
+        limit,
+        triggerDialog: false,
+      );
+
+      expect(resultFailed.discoveredProcesses, equals(1));
+      expect(resultFailed.gracefullyClosed, equals(0));
+      expect(resultFailed.terminated, equals(0));
+      expect(blockEvents.isEmpty, isTrue, reason: 'No dialog when process was discovered but failed to terminate');
+
+      // Case B: Discovered process that can be terminated
+      testTime = testTime.add(const Duration(seconds: 5));
+      processManager.processes.add(MockProcess(
+        pid: 902,
+        appName: 'ProtectedApp',
+        exeName: 'ProtectedApp.exe',
+        exePath: r'C:\ProtectedApp.exe',
+        exitsOnGracefulClose: false,
+        canBeTerminated: true,
+      ));
+
+      final resultSuccess = await enforcementService.enforceLimit(
+        limit,
+        triggerDialog: false,
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(resultSuccess.discoveredProcesses, equals(2));
+      expect(resultSuccess.terminated, equals(1));
+      expect(blockEvents.length, equals(1), reason: 'Warning dialog requested when process was successfully terminated in background');
+
+      await sub.cancel();
     });
   });
 }

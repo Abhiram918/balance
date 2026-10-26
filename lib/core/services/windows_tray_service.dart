@@ -93,11 +93,21 @@ class WindowsTrayService with TrayListener, WindowListener {
 
   /// Restores and brings the Balance window to the foreground.
   Future<void> restoreWindow() async {
+    final wasMinimized = _isWindowMinimized;
     _isWindowHidden = false;
     _isWindowMinimized = false;
     _updateVisibility();
     if (isPlatformSupported) {
       try {
+        bool shouldRestore = wasMinimized;
+        try {
+          shouldRestore = shouldRestore || await windowManager.isMinimized();
+        } catch (_) {
+          shouldRestore = true;
+        }
+        if (shouldRestore) {
+          await windowManager.restore();
+        }
         await windowManager.show();
         await windowManager.focus();
       } catch (e) {

@@ -49,6 +49,7 @@ class AppEnforcementService extends ChangeNotifier {
   // 1. Daily limits state
   final Set<String> _dailyLimitRestrictedApps = {};
   final Map<String, DateTime> _lastDailyEnforcementTime = {};
+  final Map<String, DateTime> _lastDailyDialogTime = {};
   List<AppLimit> _lastLimits = [];
   String _activeDateKey = '';
 
@@ -58,6 +59,7 @@ class AppEnforcementService extends ChangeNotifier {
   String? _activeFocusPresetName;
   Duration? _activeFocusRemainingDuration;
   final Map<String, DateTime> _lastFocusEnforcementTime = {};
+  final Map<String, DateTime> _lastFocusDialogTime = {};
   final Map<String, DateTime> _lastFocusNotificationTime = {};
 
   final Duration _cooldownDuration = const Duration(seconds: 2);
@@ -184,6 +186,18 @@ class AppEnforcementService extends ChangeNotifier {
     return isDailyLimitRestricted(appName) || isFocusRestricted(appName, exePath: exePath);
   }
 
+  /// Looks up the most recent recorded timestamp for an application, checking direct name and aliases.
+  DateTime? _getLastTimeForApp(Map<String, DateTime> timeMap, String cleanName) {
+    DateTime? lastTime = timeMap[cleanName];
+    if (lastTime != null) return lastTime;
+    for (final entry in timeMap.entries) {
+      if (areAppAliases(entry.key, cleanName)) {
+        return entry.value;
+      }
+    }
+    return null;
+  }
+
   /// Removes active daily limit restriction for an application.
   /// Never modifies focus session restrictions.
   void removeRestriction(String appName) {
@@ -191,6 +205,10 @@ class AppEnforcementService extends ChangeNotifier {
     final countBefore = _dailyLimitRestrictedApps.length;
     _dailyLimitRestrictedApps.remove(key);
     _dailyLimitRestrictedApps.removeWhere((app) => areAppAliases(app, key));
+    _lastDailyEnforcementTime.remove(key);
+    _lastDailyEnforcementTime.removeWhere((app, _) => areAppAliases(app, key));
+    _lastDailyDialogTime.remove(key);
+    _lastDailyDialogTime.removeWhere((app, _) => areAppAliases(app, key));
     if (_dailyLimitRestrictedApps.length != countBefore) {
       notifyListeners();
     }
@@ -268,6 +286,7 @@ class AppEnforcementService extends ChangeNotifier {
     _activeFocusPresetName = null;
     _activeFocusRemainingDuration = null;
     _lastFocusEnforcementTime.clear();
+    _lastFocusDialogTime.clear();
     notifyListeners();
   }
 
@@ -336,29 +355,30 @@ class AppEnforcementService extends ChangeNotifier {
     final cleanName = app.appName.trim().toLowerCase();
     final now = _clock();
 
-    // Check enforcement cooldown to prevent rapid thrashing loops
-    DateTime? lastTime = _lastFocusEnforcementTime[cleanName];
-    if (lastTime == null) {
-      for (final entry in _lastFocusEnforcementTime.entries) {
-        if (areAppAliases(entry.key, cleanName)) {
-          lastTime = entry.value;
-          break;
-        }
+    // Check enforcement cooldown to prevent rapid thrashing loops.
+    // Silent background checks must never suppress interactive foreground dialogs.
+    if (!triggerDialog) {
+      final lastEnforcement = _getLastTimeForApp(_lastFocusEnforcementTime, cleanName);
+      if (lastEnforcement != null && now.difference(lastEnforcement) < _cooldownDuration) {
+        return EnforcementResult(
+          appName: app.appName,
+          isEnforced: true,
+          message: 'Focus enforcement is in active cooldown for ${app.appName}.',
+        );
       }
     }
-    if (lastTime != null && now.difference(lastTime) < _cooldownDuration) {
-      return EnforcementResult(
-        appName: app.appName,
-        isEnforced: true,
-        message: 'Focus enforcement is in active cooldown for ${app.appName}.',
-      );
-    }
-    _lastFocusEnforcementTime[cleanName] = now;
+
+    final lastDialog = _getLastTimeForApp(_lastFocusDialogTime, cleanName);
+    final isDialogInCooldown =
+        lastDialog != null && now.difference(lastDialog) < _cooldownDuration;
+
+    bool dialogDispatched = false;
 
     // Dispatch Block Dialog event BEFORE waiting for process close
-    // so users receive a timely explanation without allowing restricted
-    // applications to bypass enforcement.
-    if (triggerDialog) {
+    // when explicitly requested (e.g. foreground detection)
+    if (triggerDialog && !isDialogInCooldown) {
+      _lastFocusDialogTime[cleanName] = now;
+      dialogDispatched = true;
       final effectiveRemaining =
           remainingDuration ?? _activeFocusRemainingDuration ?? Duration.zero;
       final event = AppBlockEvent(
@@ -377,6 +397,30 @@ class AppEnforcementService extends ChangeNotifier {
       appName: app.appName,
       exePath: app.exePath,
     );
+
+    final bool hasSuccessfullyTerminated =
+        (closeResult.gracefullyClosed + closeResult.terminated) > 0;
+
+    if (dialogDispatched || hasSuccessfullyTerminated) {
+      _lastFocusEnforcementTime[cleanName] = now;
+    }
+
+    // Background enforcement warning request when process was actually terminated
+    if (!dialogDispatched && hasSuccessfullyTerminated && !isDialogInCooldown) {
+      _lastFocusDialogTime[cleanName] = now;
+      final effectiveRemaining =
+          remainingDuration ?? _activeFocusRemainingDuration ?? Duration.zero;
+      final event = AppBlockEvent(
+        appName: app.appName,
+        exePath: app.exePath,
+        reason: AppBlockReason.focusSession,
+        focusPresetName: presetName ?? _activeFocusPresetName,
+        remainingFocusDuration: effectiveRemaining,
+        resetTime: now.add(effectiveRemaining),
+        timestamp: now,
+      );
+      dispatchBlockEvent(event);
+    }
 
     final result = EnforcementResult(
       appName: app.appName,
@@ -426,30 +470,32 @@ class AppEnforcementService extends ChangeNotifier {
     _dailyLimitRestrictedApps.add(cleanName);
     notifyListeners();
 
-    // Check enforcement debounce/cooldown to prevent rapid thrashing loops
     final now = _clock();
-    DateTime? lastTime = _lastDailyEnforcementTime[cleanName];
-    if (lastTime == null) {
-      for (final entry in _lastDailyEnforcementTime.entries) {
-        if (areAppAliases(entry.key, cleanName)) {
-          lastTime = entry.value;
-          break;
-        }
+
+    // Check enforcement debounce/cooldown to prevent rapid thrashing loops.
+    // Silent background checks must never suppress interactive foreground dialogs.
+    if (!triggerDialog) {
+      final lastEnforcement = _getLastTimeForApp(_lastDailyEnforcementTime, cleanName);
+      if (lastEnforcement != null && now.difference(lastEnforcement) < _cooldownDuration) {
+        return EnforcementResult(
+          appName: limit.appName,
+          isEnforced: true,
+          message: 'Enforcement is in active cooldown for ${limit.appName}.',
+        );
       }
     }
-    if (lastTime != null && now.difference(lastTime) < _cooldownDuration) {
-      return EnforcementResult(
-        appName: limit.appName,
-        isEnforced: true,
-        message: 'Enforcement is in active cooldown for ${limit.appName}.',
-      );
-    }
-    _lastDailyEnforcementTime[cleanName] = now;
+
+    final lastDialog = _getLastTimeForApp(_lastDailyDialogTime, cleanName);
+    final isDialogInCooldown =
+        lastDialog != null && now.difference(lastDialog) < _cooldownDuration;
+
+    bool dialogDispatched = false;
 
     // Dispatch Block Dialog event BEFORE waiting for graceful close/kill
-    // so users receive a timely explanation without allowing restricted
-    // applications to bypass enforcement.
-    if (triggerDialog) {
+    // when explicitly requested (e.g. from foreground detection)
+    if (triggerDialog && !isDialogInCooldown) {
+      _lastDailyDialogTime[cleanName] = now;
+      dialogDispatched = true;
       final nextMidnight = DateTime(now.year, now.month, now.day + 1);
       final event = AppBlockEvent(
         appName: limit.appName,
@@ -467,6 +513,33 @@ class AppEnforcementService extends ChangeNotifier {
       appName: limit.appName,
       exePath: limit.exePath,
     );
+
+    // Requirement 5: Inspect actual enforcement result type to distinguish
+    // discovered from successfully terminated processes.
+    final bool hasSuccessfullyTerminated =
+        (closeResult.gracefullyClosed + closeResult.terminated) > 0;
+
+    if (dialogDispatched || hasSuccessfullyTerminated) {
+      _lastDailyEnforcementTime[cleanName] = now;
+    }
+
+    // Requirement 2: Background enforcement should request a warning when it
+    // actually intercepts and terminates a blocked app, but must not create
+    // repeated dialogs from ordinary polling.
+    if (!dialogDispatched && hasSuccessfullyTerminated && !isDialogInCooldown) {
+      _lastDailyDialogTime[cleanName] = now;
+      final nextMidnight = DateTime(now.year, now.month, now.day + 1);
+      final event = AppBlockEvent(
+        appName: limit.appName,
+        exePath: limit.exePath,
+        reason: AppBlockReason.dailyLimit,
+        limitDuration: limit.limitDuration,
+        usedDuration: usedDuration ?? limit.limitDuration,
+        resetTime: nextMidnight,
+        timestamp: now,
+      );
+      dispatchBlockEvent(event);
+    }
 
     final result = EnforcementResult(
       appName: limit.appName,
@@ -694,6 +767,7 @@ class AppEnforcementService extends ChangeNotifier {
       _activeDateKey = currentDateKey;
       _dailyLimitRestrictedApps.clear();
       _lastDailyEnforcementTime.clear();
+      _lastDailyDialogTime.clear();
       // Zero-minute allowances remain restricted every day from 00:00:00
       for (final limit in _lastLimits) {
         if (limit.isEnabled && limit.isEnforced && limit.limitDuration <= Duration.zero) {
