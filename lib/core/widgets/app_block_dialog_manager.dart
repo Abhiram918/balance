@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:window_manager/window_manager.dart';
 import '../../app/app.dart';
 import '../models/app_block_event.dart';
 import '../services/app_enforcement_service.dart';
@@ -14,11 +16,16 @@ import 'app_block_dialog.dart';
 /// - Events are handled globally regardless of which screen is active.
 /// - Duplicate simultaneous dialogs are never stacked.
 /// - Later reopen attempts can display the dialog again after dismissal.
+/// - Temporarily elevates window to topmost so warning is visible over blocked app.
+/// - Always restores normal always-on-top state in finally block when dismissed.
 /// - Subscriptions are properly disposed without leaks.
 class AppBlockDialogManager extends StatefulWidget {
   final LimitsService? limitsService;
   final AppEnforcementService? enforcementService;
   final FutureOr<void> Function()? onRestoreWindow;
+  final FutureOr<void> Function(bool alwaysOnTop)? onSetAlwaysOnTop;
+  final FutureOr<bool> Function()? onGetAlwaysOnTop;
+  final bool? isPlatformSupported;
   final Widget child;
 
   const AppBlockDialogManager({
@@ -26,6 +33,9 @@ class AppBlockDialogManager extends StatefulWidget {
     this.limitsService,
     this.enforcementService,
     this.onRestoreWindow,
+    this.onSetAlwaysOnTop,
+    this.onGetAlwaysOnTop,
+    this.isPlatformSupported,
     required this.child,
   });
 
@@ -38,6 +48,46 @@ class _AppBlockDialogManagerState extends State<AppBlockDialogManager> {
   Stream<AppBlockEvent>? _activeStream;
   bool _isDialogOpen = false;
   String? _currentBlockedAppName;
+
+  bool get _isPlatformSupported =>
+      widget.isPlatformSupported ??
+      (!Platform.environment.containsKey('FLUTTER_TEST') && Platform.isWindows);
+
+  Future<bool> _queryInitialAlwaysOnTop() async {
+    if (widget.onGetAlwaysOnTop != null) {
+      try {
+        return await widget.onGetAlwaysOnTop!();
+      } catch (_) {
+        return false;
+      }
+    }
+    if (_isPlatformSupported) {
+      try {
+        return await windowManager.isAlwaysOnTop();
+      } catch (e) {
+        debugPrint('Failed to query isAlwaysOnTop: $e');
+      }
+    }
+    return false;
+  }
+
+  Future<void> _applyAlwaysOnTop(bool isAlwaysOnTop) async {
+    if (widget.onSetAlwaysOnTop != null) {
+      try {
+        await widget.onSetAlwaysOnTop!(isAlwaysOnTop);
+      } catch (e) {
+        debugPrint('onSetAlwaysOnTop callback error: $e');
+      }
+      return;
+    }
+    if (_isPlatformSupported) {
+      try {
+        await windowManager.setAlwaysOnTop(isAlwaysOnTop);
+      } catch (e) {
+        debugPrint('windowManager.setAlwaysOnTop($isAlwaysOnTop) error: $e');
+      }
+    }
+  }
 
   @override
   void didChangeDependencies() {
@@ -94,11 +144,25 @@ class _AppBlockDialogManagerState extends State<AppBlockDialogManager> {
   Future<void> _showBlockDialog(AppBlockEvent event) async {
     _isDialogOpen = true;
     _currentBlockedAppName = event.appName;
+    bool wasAlwaysOnTop = false;
 
     try {
+      wasAlwaysOnTop = await _queryInitialAlwaysOnTop();
+
       if (widget.onRestoreWindow != null) {
         await widget.onRestoreWindow!();
       }
+
+      // Temporarily elevate the Balance window above normal application windows
+      // so the warning is immediately visible over the blocked app.
+      await _applyAlwaysOnTop(true);
+
+      if (_isPlatformSupported) {
+        try {
+          await windowManager.focus();
+        } catch (_) {}
+      }
+
       if (!mounted) return;
 
       await showDialog<void>(
@@ -109,7 +173,17 @@ class _AppBlockDialogManagerState extends State<AppBlockDialogManager> {
           onDismiss: () => Navigator.of(dialogCtx).pop(),
         ),
       );
+    } catch (e) {
+      debugPrint('Error presenting app block dialog: $e');
     } finally {
+      // Guaranteed to restore normal always-on-top state even if dialog is dismissed
+      // or presentation throws an error.
+      try {
+        await _applyAlwaysOnTop(wasAlwaysOnTop);
+      } catch (e) {
+        debugPrint('Error restoring window alwaysOnTop state: $e');
+      }
+
       if (mounted) {
         _isDialogOpen = false;
         _currentBlockedAppName = null;

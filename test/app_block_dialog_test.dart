@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:balance/app/app.dart';
@@ -225,7 +226,12 @@ void main() {
       );
     });
 
-    Widget buildTestApp({Widget? child}) {
+    Widget buildTestApp({
+      Widget? child,
+      FutureOr<void> Function(bool alwaysOnTop)? onSetAlwaysOnTop,
+      FutureOr<bool> Function()? onGetAlwaysOnTop,
+      FutureOr<void> Function()? onRestoreWindow,
+    }) {
       return LimitsProvider(
         limitsService: limitsService,
         child: MaterialApp(
@@ -234,6 +240,9 @@ void main() {
           ),
           home: AppBlockDialogManager(
             limitsService: limitsService,
+            onSetAlwaysOnTop: onSetAlwaysOnTop,
+            onGetAlwaysOnTop: onGetAlwaysOnTop,
+            onRestoreWindow: onRestoreWindow,
             child: child ?? const Scaffold(body: Center(child: Text('Main Content'))),
           ),
         ),
@@ -643,6 +652,74 @@ void main() {
       // EnforcementService disposal cleans up the StreamController
       expect(() => enforcementService.dispose(), returnsNormally);
       expect(() => limitsService.dispose(), returnsNormally);
+    });
+
+    testWidgets('11. AppBlockDialogManager elevates window to alwaysOnTop while dialog is open and restores state on dismissal', (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      final alwaysOnTopHistory = <bool>[];
+      bool initialAlwaysOnTop = false;
+
+      await tester.pumpWidget(buildTestApp(
+        onGetAlwaysOnTop: () => initialAlwaysOnTop,
+        onSetAlwaysOnTop: (val) => alwaysOnTopHistory.add(val),
+      ));
+      await tester.pump();
+
+      // Dispatch block event
+      enforcementService.dispatchBlockEvent(AppBlockEvent(
+        appName: 'Telegram',
+        limitDuration: const Duration(hours: 1),
+        usedDuration: const Duration(hours: 1, minutes: 5),
+        resetTime: DateTime(2026, 10, 15),
+        timestamp: testTime,
+      ));
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      // Dialog is open and window was elevated to alwaysOnTop = true
+      expect(find.byType(AppBlockDialog), findsOneWidget);
+      expect(alwaysOnTopHistory, equals([true]));
+
+      // Dismiss dialog
+      await tester.tap(find.byKey(const Key('block_dialog_got_it_button')));
+      await tester.pumpAndSettle();
+
+      // Dialog is dismissed and normal state (false) is restored in finally
+      expect(find.byType(AppBlockDialog), findsNothing);
+      expect(alwaysOnTopHistory, equals([true, false]));
+    });
+
+    testWidgets('12. AppBlockDialogManager restores alwaysOnTop state even if window restoration throws', (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      final alwaysOnTopHistory = <bool>[];
+
+      await tester.pumpWidget(buildTestApp(
+        onRestoreWindow: () => throw Exception('Native restoration error'),
+        onSetAlwaysOnTop: (val) => alwaysOnTopHistory.add(val),
+      ));
+      await tester.pump();
+
+      // Dispatch block event
+      enforcementService.dispatchBlockEvent(AppBlockEvent(
+        appName: 'Telegram',
+        limitDuration: const Duration(hours: 1),
+        usedDuration: const Duration(hours: 1, minutes: 5),
+        resetTime: DateTime(2026, 10, 15),
+        timestamp: testTime,
+      ));
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      // In finally, alwaysOnTop must be safely restored to false
+      expect(alwaysOnTopHistory.contains(false), isTrue);
     });
   });
 }
